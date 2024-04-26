@@ -2,6 +2,10 @@
 
 Attempt to remake a simple SQL database in C
 
+## Sqlite architecture
+
+![Architecture of sqlite](img/img-2024-04-26-18-03.png)
+
 ## Sources
 
 - [sqlite tutorial](https://www.sqlitetutorial.net/)
