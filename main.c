@@ -34,8 +34,8 @@ void destroy_input(input_buffer* input) {
 
 typedef struct {
   uint32_t id;
-  char username[COLUMN_USERNAME];
-  char email[COLUMN_EMAIL];
+  char username[COLUMN_USERNAME + 1];
+  char email[COLUMN_EMAIL + 1];
 } Row;
 
 #define size_of_attribute(Struct, Attribute) sizeof(((Struct*)0)->Attribute)

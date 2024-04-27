@@ -33,3 +33,16 @@ Attempt to remake a simple SQL database in C
 - [sqlite tutorial](https://www.sqlitetutorial.net/)
 - [sqlite official documentation](https://www.sqlite.org/)
 - [cstack db tutorial](https://cstack.github.io/db_tutorial/parts/part1.html)
+
+## Lexer
+
+1. keyword (select, insert into, update, create, drop)
+
+1. select a, b, c from tablename where condition
+1. update tablename set a=x where condition
+1. insert (a, b, c, d) into tablename
+1. create table tablename (
+   attrname type PK,
+   attrname type,
+   ...
+   )
