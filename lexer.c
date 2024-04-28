@@ -1,138 +1,357 @@
 #include <assert.h>
-#include <ctype.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 typedef enum Token_kind {
-  KEYWORD,    // select insert update, create drop, into set where
-  TABLENAME,  // parser : exists in table list ?
-  ATTRNAME,   // parser : exists in tablename attr
-  STRING,     // 'abc' "abc"
-  NUMBER,     // 123 123.4 0123 0x123
-  REL,        // = != < > <= >=
-  LPAREN,     // (
-  RPAREN,     // )
+  KEYWORD,         // select insert update, create drop, into set where
+  IDENTIFIER,      // variable name ()
+  LITERAL_STRING,  // 'abc' "abc"
+  NUMBER,          // 123 0123 0x123
+  OPERATOR,        // = != < > <= >= + - * / %
+  LELT_PAREN,      // (
+  RIGHT_PAREN,     // )
+  PUNCTUATION,     // , .
+  UNKNOWN,         //
 } token_kind;
 
-typedef enum Keyword {
-  SELECT,
-  INSERT,
-  UPDATE,
-  DELETE,
-  CREATE,
-  DROP,
-  INTO,
-  SET,
-  WHERE,
-} keyword;
+char* repr_kind(token_kind kind) {
+  switch (kind) {
+    case KEYWORD:
+      return "keyword";
+    case IDENTIFIER:
+      return "identifier";
+    case LITERAL_STRING:
+      return "literal_string";
+    case NUMBER:
+      return "number";
+    case OPERATOR:
+      return "operator";
+    case LELT_PAREN:
+      return "lelt_paren";
+    case RIGHT_PAREN:
+      return "right_paren";
+    case PUNCTUATION:
+      return "punctuation";
+    case UNKNOWN:
+      return "unknown";
+    default:
+      return "";
+  }
+}
 
-#define NBKEYWORDS 18
+#define NBKEYWORDS 20
 // clang-format off
-const char skeywords[NBKEYWORDS][6] = {
+const char *skeywords[20] = {
   "drop",   "DROP",
-  "select", "SELECT", 
+  "from",   "FROM",
+  "select", "SELECT",
   "create", "CREATE",
-  "insert", "INSERT", 
-  "into",   "INTO", 
-  "set",    "SET", 
-  "update", "UPDATE", 
+  "insert", "INSERT",
+  "into",   "INTO",
+  "set",    "SET",
+  "update", "UPDATE",
   "where",  "WHERE",
-  "delete", "DELETE", 
+  "delete", "DELETE",
 };
 // clang-format on
 
-int is_keyword(char* word) {
+bool is_keyword(char* word, int len) {
+  if (len < 3 || len > 6) {
+    return false;
+  }
+
   for (int i = 0; i < NBKEYWORDS; i++) {
-    if (strcmp(word, skeywords[i]) == 0) {
-      return i / 2;
+    size_t len_keyword = strlen(skeywords[i]);
+    if (len_keyword == len && strncmp(word, skeywords[i], len_keyword) == 0) {
+      return true;
     }
   }
-  return -1;
+  return false;
+}
+
+// identifier in sql https://sqlite.org/lang_keywords.html
+// identifier are enclosed between double quote "identifier"
+bool is_identifier(char* word, int len) {
+  if (word[0] != '"') {
+    return false;
+  }
+  unsigned long i = 1;
+  while (i < len) {
+    if (word[i] == '"') {
+      break;
+    }
+    i++;
+  }
+  return i + 1 == len;
+}
+
+// literal strings are enclosed between 'litteral_string'
+bool is_literal_string(char* word, int len) {
+  if (word[0] != '\'') {
+    return false;
+  }
+  unsigned long i = 1;
+  while (i < len) {
+    if (word[i] == '\'') {
+      break;
+    }
+    if (word[i] == '\\') {
+      i++;
+    }
+    i++;
+  }
+  return i + 1 == len;
+}
+
+// https://koor.fr/C/cstdlib/strtol.wp
+bool is_number(char* word, int len) {
+  char* p_end;
+  strtol(word, &p_end, 0);
+  if (word + len == p_end) {
+    return true;
+  }
+  strtod(word, &p_end);
+  if (word + len == p_end) {
+    return true;
+  }
+  return false;
+}
+
+#define LEN1OPERATORS 8
+const char len_1_operators[LEN1OPERATORS] = "=<>+-*/%";
+
+#define LEN2OPERATORS 4
+const char len_2_operators[LEN2OPERATORS][2] = {"!=", "<=", ">=", "OR"};
+
+const char* len_3_operators = "AND";
+
+bool is_operator(char* word, int len) {
+  switch (len) {
+    case 1:
+      for (int i = 0; i < LEN1OPERATORS; i++) {
+        if (*word == len_1_operators[i]) {
+          return true;
+        }
+      }
+      return false;
+      break;
+    case 2:
+      for (int i = 0; i < LEN2OPERATORS; i++) {
+        if (strncmp(word, len_2_operators[i], 2) == 0) {
+          return true;
+        }
+      }
+      return false;
+      break;
+    case 3:
+      return strncmp(word, len_3_operators, 3) == 0;
+    default:
+      return false;
+      break;
+  }
+
+  return false;
+}
+
+bool is_punctuation(char* word, int len) {
+  if (len != 1) {
+    return false;
+  }
+  switch (word[0]) {
+    case ',':
+    case ';':
+    case '.':
+      return true;
+      break;
+    default:
+      return false;
+      break;
+  }
+}
+
+bool is_left_paren(char* word, int len) {
+  if (len != 1) {
+    return false;
+  }
+  return word[0] == '(';
+}
+
+bool is_right_paren(char* word, int len) {
+  if (len != 1) {
+    return false;
+  }
+  return word[0] == ')';
 }
 
 typedef struct Token {
-  char* data;
+  char* value;
   int len;
   token_kind kind;
-  struct Token* next;
-  struct Token* prev;
 } token;
 
-token* create_token(char* data, int len, token* prev) {
+token* new_token(char* value, int len, token_kind kind) {
   token* t = (token*)malloc(sizeof(token));
   assert(t != NULL);
-  char* d = (char*)malloc(sizeof(char) * len);
-  t->data = d;
-  strcpy(t->data, data);
-  t->len = len;
-  t->prev = prev;
-  t->next = NULL;
+  char* v = (char*)malloc(sizeof(char) * (len + 2));
+  assert(v != NULL);
+  t->value = v;
+  strncpy(t->value, value, len + 1);
+  t->value[len + 1] = '\0';
+  t->len = len + 1;
+  t->kind = kind;
   return t;
 }
 
-#define MAXTOKEN 1000
-#define MAXWORD 100
-#define MAXWORDS 100
+void print_token(token* tok) {
+  if (tok == NULL) {
+    printf("Token is NULL\n");
+    return;
+  }
+  printf("Token kind %s, data: %s, len %d\n", repr_kind(tok->kind), tok->value,
+         tok->len);
+}
 
-token* split_line(char* line) {
-  int line_index = 0;
-  int len_word = 0;
-  int nb_words = 0;
-  char word[MAXWORD];
+token* get_next_token(char* line, int* position) {
+  int i = 0;
   char c;
-
-  token* current = (token*)malloc(sizeof(token));
-  assert(current != NULL);
-  token* next;
-
-  token* root = current;
-
-  while ((c = line[line_index]) != '\0') {
+  token_kind kind;
+  token* tok = NULL;
+  while (true) {
+    c = line[*position + i];
     if (c == ' ' || c == '\t' || c == '\n') {
-      if (len_word == 0) {
-        continue;
-      }
-      if (len_word > 0 && word[len_word - 1] == ',') {
-        len_word--;
-      }
-      word[len_word] = '\0';
-      next = create_token(word, len_word, current);
-      current->next = next;
-      current = next;
-
-      nb_words++;
-      len_word = 0;
-    } else {
-      word[len_word] = c;
-      len_word++;
+      *position = *position + 1;
+      continue;
     }
-    line_index++;
-  }
-  if (len_word > 0) {
-    if (line_index > 0 && line[line_index - 1] == ';') {
-      len_word--;
+    if (c == '\0' || c == EOF) {
+      tok = NULL;
+      break;
     }
-    word[len_word] = '\0';
-    next = create_token(word, len_word, current);
-    current->next = next;
-    current = next;
+    if (is_keyword(line + *position, i + 1)) {
+      kind = KEYWORD;
+      tok = new_token(line + *position, i, kind);
+      break;
+    }
+    if (is_identifier(line + *position, i + 1)) {
+      kind = IDENTIFIER;
+      tok = new_token(line + *position, i, kind);
+      break;
+    }
+    if (is_literal_string(line + *position, i + 1)) {
+      kind = LITERAL_STRING;
+      tok = new_token(line + *position, i, kind);
+      break;
+    }
+    if (is_number(line + *position, i + 1)) {
+      kind = NUMBER;
+      tok = new_token(line + *position, i, kind);
+      break;
+    }
+    if (is_operator(line + *position, i + 1)) {
+      kind = OPERATOR;
+      tok = new_token(line + *position, i, kind);
+      break;
+    }
+    if (is_punctuation(line + *position, i + 1)) {
+      kind = PUNCTUATION;
+      tok = new_token(line + *position, i, kind);
+      break;
+    }
+    if (is_left_paren(line + *position, i + 1)) {
+      kind = LELT_PAREN;
+      tok = new_token(line + *position, i, kind);
+      break;
+    }
+    if (is_right_paren(line + *position, i + 1)) {
+      kind = RIGHT_PAREN;
+      tok = new_token(line + *position, i, kind);
+      break;
+    }
+    i++;
   }
+  *position += i + 1;
+  return tok;
+}
 
-  return root;
+#define MAXTOKEN 1000
+
+void syntax_error(char* line, int position) {
+  fprintf(stderr, "Syntax error column %d. Unknown token.\n", position);
+  fprintf(stderr, "%s\n", line);
+  for (int i = 0; i + 2 < position; i++) {
+    fprintf(stderr, " ");
+  }
+  fprintf(stderr, "^\n");
+  exit(1);
+}
+
+void lexer(char* line, token** tokens) {
+  int position = 0;
+  int line_len = strlen(line);
+  int nb_tokens = 0;
+  while (position < line_len) {
+    token* tok = get_next_token(line, &position);
+    if (tok == NULL) {
+      syntax_error(line, position);
+    }
+    tokens[nb_tokens++] = tok;
+  }
+}
+
+void destroy_tokens(token** tokens) {
+  for (int i = 0; i < MAXTOKEN; i++) {
+    if (tokens[i] == NULL) {
+      break;
+    }
+    free(tokens[i]->value);
+    free(tokens[i]);
+  }
+  free(tokens);
+}
+
+void test_comparison_functions(void) {
+  assert(is_keyword("SELECT", 6));
+  assert(is_keyword("select", 6));
+  assert(!is_keyword("selezt", 6));
+  assert(!is_keyword("selec", 5));
+  assert(is_identifier("\"abc\"", 5));
+  assert(is_literal_string("'abc'", 5));
+  assert(is_literal_string("'a\\'c'", 6));
+  assert(is_number("123", 3));
+  assert(is_number("12.3", 4));
+  assert(is_number("0xff22aa", 8));
+  assert(is_number("00", 2));
+  assert(is_operator("*", 1));
+  assert(is_operator("<=", 2));
+  assert(!is_operator("<=!", 3));
+  assert(is_left_paren("(", 1));
+  assert(is_right_paren(")", 1));
+  assert(!is_left_paren(")", 1));
+  assert(!is_right_paren("(", 1));
 }
 
 int main(void) {
+  test_comparison_functions();
+
   char* line;
-  line = "select a, b, c from tablename where a=2;";
-  line = "insert into tablename (x=1, y = 2, z = 3);";
-  token* tok = split_line(line);
-  getchar();
-  while (tok != NULL) {
-    printf("token: data %s\n", tok->data);
-    tok = tok->next;
+  line = "select";
+  line = "select * from 'tablename'";
+  line = "insert tablename x = 1, y = 2, z = 3";
+  line = "select \"a\", \"b\", \"c\" from \"tablename\" where \"a\"=2";
+  /* line = "aze"; */
+
+  token** tokens = (token**)malloc(sizeof(token) * MAXTOKEN);
+  assert(tokens != NULL);
+  lexer(line, tokens);
+  for (int i = 0; i < MAXTOKEN; i++) {
+    if (tokens[i] == NULL) {
+      break;
+    }
+    print_token(tokens[i]);
   }
+
+  destroy_tokens(tokens);
 
   printf("done\n");
 

@@ -1,6 +1,39 @@
 # QDB
 
-Attempt to remake a simple SQL database in C
+Attempt to remake a simple SQL like database in C
+
+## Syntax
+
+- keywords can be capitalized or not
+- one statement at a time no need for semicolon ;
+
+```sql
+select a, b, c from `tablename` where a = 1
+```
+
+```sql
+select * from `tablename`
+```
+
+```sql
+insert into `tablename` a = 1, b = 2, c = 3
+```
+
+```sql
+update `tablename` set a = 1, c = 3
+```
+
+```sql
+delete from `tablename` where a = 1
+```
+
+```sql
+create `tablename` id int pk, b str[32], c float
+```
+
+```sql
+drop `tablename`
+```
 
 ## Steps
 
