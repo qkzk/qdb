@@ -7,32 +7,54 @@ Attempt to remake a simple SQL like database in C
 - keywords can be capitalized or not
 - one statement at a time no need for semicolon ;
 
+select suivi d'identifieurs de champs séparés par des virgules suivi de from suivi d'un identifieur de table
+suivi de where suivi d'un identifieur d'une condition
+
 ```sql
-select a, b, c from `tablename` where a = 1
+select "a", "b", "c" from "tablename" where "a" = 1
 ```
 
 ```sql
-select * from `tablename`
+select * from "tablename"
+```
+
+insert suivi de into suivi d'un identifieur de table suivi de ( suivi de toutes les valeurs dans l'ordre suivi de )
+
+```sql
+insert into "tablename" (1, 2, 3)
+```
+
+update suivi d'un identifieur de table suivi de set suivi de
+
+```sql
+update "tablename" set "a" = 1, "c" = 3
 ```
 
 ```sql
-insert into `tablename` a = 1, b = 2, c = 3
+delete from "tablename" where "a" = 1
 ```
 
 ```sql
-update `tablename` set a = 1, c = 3
+create table "tablename" ("id" int pk, "b" str[32], "c" float)
 ```
 
 ```sql
-delete from `tablename` where a = 1
+drop table "tablename"
 ```
 
-```sql
-create `tablename` id int pk, b str[32], c float
-```
+litteraux
+
+| truc      | type              | C rep              |
+| --------- | ----------------- | ------------------ |
+| `32`      | NUMBER            | long               |
+| `32.3`    | NUMBER            | double             |
+| `0x33`    | NUMBER            | long               |
+| `bonjour` | str[unsigned int] | char[unsigned int] |
+
+conditions
 
 ```sql
-drop `tablename`
+"identifieur de champ" rel val
 ```
 
 ## Steps
@@ -79,3 +101,54 @@ drop `tablename`
    attrname type,
    ...
    )
+
+# Syntax
+
+```ebnf
+statement       ::=     select-clause | insert-clause | update-clause | delete-clause | create-clause | drop-clause.
+
+
+select-clause   ::=     'SELECT', projection, 'FROM', tablename ( 'WHERE' condition ).
+
+insert-clause   ::=     'INSERT', 'INTO', tablename, '(', literal (',' literal)*, ')'.
+
+update-clause   ::=     'UPDATE', tablename, 'SET', colname, '=', literal (',' colname = literal)* ( 'WHERE', condition ).
+
+delete-clause   ::=     'DELETE', 'FROM', tablename, ( 'WHERE', condition ).
+
+create-clause   ::=     'CREATE', 'TABLE', tablename, '(', colname, type, 'PK', (',' colname type )* ')'.
+
+drop-clause     ::=     'DROP', 'TABLE', tablename.
+
+projection      ::=     colname (',' colname)* ) | *.
+
+colname         ::=     identifier.
+
+tablename       ::=     identifier.
+
+condition       ::=     rel | '(', rel, ')'  ( 'AND', condition )* ( 'OR', condition )* .
+
+rel             ::=     colname, comp-operator, literal.
+
+comp-operator   ::=     '=' | '<' | '>' | '<=' | '>=' | '!='.
+
+type            ::=     'str['int']' | 'number'.
+
+literal         ::=     string  | number.
+
+string          ::=     '"'expr'"'.
+number          ::=     ('-') digit-excl-zero(digit)*('.')digit(digit)* | '0x'hexdigit-excl-zero(hexdigit)* | '0'octdigit-exl-zero(octigit)*.
+
+digit-excl-zero ::=     '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9'.
+digit           ::=     '0' | digit-excl-zero.
+
+hexdigit-excl-zero ::=     '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | 'a' | 'b' | 'c' | 'd' | 'e' | 'f'.
+hexdigit           ::=     '0' | hexdigit-excl-zero.
+
+octdigit-excl-zero ::=     '1' | '2' | '3' | '4' | '5' | '6' | '7'.
+octdigit           ::=     '0' | octdigit-excl-zero.
+```
+
+# DONE
+
+1. [lexer](./lexer.c)
