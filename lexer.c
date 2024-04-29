@@ -10,7 +10,7 @@ typedef enum Token_kind {
   LITERAL_STRING,  // 'abc' "abc"
   NUMBER,          // 123 0123 0x123
   OPERATOR,        // = != < > <= >= + - * / %
-  LELT_PAREN,      // (
+  LEFT_PAREN,      // (
   RIGHT_PAREN,     // )
   PUNCTUATION,     // , .
   UNKNOWN,         //
@@ -28,8 +28,8 @@ char* repr_kind(token_kind kind) {
       return "number";
     case OPERATOR:
       return "operator";
-    case LELT_PAREN:
-      return "lelt_paren";
+    case LEFT_PAREN:
+      return "left_paren";
     case RIGHT_PAREN:
       return "right_paren";
     case PUNCTUATION:
@@ -41,19 +41,24 @@ char* repr_kind(token_kind kind) {
   }
 }
 
-#define NBKEYWORDS 20
+#define NBKEYWORDS 30
 // clang-format off
-const char *skeywords[20] = {
-  "drop",   "DROP",
-  "from",   "FROM",
-  "select", "SELECT",
-  "create", "CREATE",
-  "insert", "INSERT",
-  "into",   "INTO",
-  "set",    "SET",
-  "update", "UPDATE",
-  "where",  "WHERE",
-  "delete", "DELETE",
+const char *skeywords[NBKEYWORDS] = {
+  "drop",     "DROP",
+  "from",     "FROM",
+  "select",   "SELECT",
+  "create",   "CREATE",
+  "insert",   "INSERT",
+  "into",     "INTO",
+  "set",      "SET",
+  "table",    "TABLE",
+  "update",   "UPDATE",
+  "where",    "WHERE",
+  "delete",   "DELETE",
+  "pk",       "PK",
+  "varchar",  "VARCHAR",
+  "or",       "OR",
+  "and",      "AND",
 };
 // clang-format on
 
@@ -87,7 +92,7 @@ bool is_identifier(char* word, int len) {
   return i + 1 == len;
 }
 
-// literal strings are enclosed between 'litteral_string'
+// literal strings are enclosed between 'literal_string'
 bool is_literal_string(char* word, int len) {
   if (word[0] != '\'') {
     return false;
@@ -108,11 +113,11 @@ bool is_literal_string(char* word, int len) {
 // https://koor.fr/C/cstdlib/strtol.wp
 bool is_number(char* word, int len) {
   char* p_end;
-  strtol(word, &p_end, 0);
+  strtod(word, &p_end);
   if (word + len == p_end) {
     return true;
   }
-  strtod(word, &p_end);
+  strtol(word, &p_end, 0);
   if (word + len == p_end) {
     return true;
   }
@@ -259,7 +264,7 @@ token* get_next_token(char* line, int* position) {
       break;
     }
     if (is_left_paren(line + *position, i + 1)) {
-      kind = LELT_PAREN;
+      kind = LEFT_PAREN;
       tok = new_token(line + *position, i, kind);
       break;
     }
@@ -286,7 +291,7 @@ void syntax_error(char* line, int position) {
   exit(1);
 }
 
-void lexer(char* line, token** tokens) {
+int lexer(char* line, token** tokens) {
   int position = 0;
   int line_len = strlen(line);
   int nb_tokens = 0;
@@ -297,6 +302,7 @@ void lexer(char* line, token** tokens) {
     }
     tokens[nb_tokens++] = tok;
   }
+  return nb_tokens;
 }
 
 void destroy_tokens(token** tokens) {
@@ -331,7 +337,7 @@ void test_comparison_functions(void) {
   assert(!is_right_paren("(", 1));
 }
 
-int main(void) {
+int example_lexer(void) {
   test_comparison_functions();
 
   char* line;
@@ -339,6 +345,7 @@ int main(void) {
   line = "select * from 'tablename'";
   line = "insert tablename x = 1, y = 2, z = 3";
   line = "select \"a\", \"b\", \"c\" from \"tablename\" where \"a\"=2";
+  line = "drop table 'user'";
   /* line = "aze"; */
 
   token** tokens = (token**)malloc(sizeof(token) * MAXTOKEN);
