@@ -143,4 +143,4 @@ octdigit           ::=     '0' | octdigit-excl-zero.
 1. [lexer](./lexer.c)
 2. [parser](./parser.c)
    - [x] `drop table "tablename"`
-   - [x] `insert into table "tablename" (123, 'ast', 123.456)`
+   - [x] `insert into table "tablename" (123, 'ast', 123.456,-19, -89.012)`

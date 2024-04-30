@@ -121,9 +121,14 @@ void print_ast(ast_node* root) {
 
 ast_node* parse_statement(token** tokens, int* nb_tokens);
 ast_node* parse_drop(token** tokens, int* nb_tokens);
-ast_node* parse_tablename(token** tokens, int* nb_tokens);
 ast_node* parse_insert(token** tokens, int* nb_tokens);
+ast_node* parse_tablename(token** tokens, int* nb_tokens);
 ast_node* parse_literal(token** tokens, int* nb_tokens);
+ast_node* parse_literal_string(token** tokens, int* nb_tokens);
+ast_node* parse_literal_postive_integer(token** tokens, int* nb_tokens);
+ast_node* parse_literal_negative_integer(token** tokens, int* nb_tokens);
+ast_node* parse_literal_positive_float(token** tokens, int* nb_tokens);
+ast_node* parse_literal_negative_integer(token** tokens, int* nb_tokens);
 
 /* ast_node* parse_select(token* tokens, int* nb_tokens); */
 /* ast_node* parse_update(token* tokens, int* nb_tokens); */
@@ -135,8 +140,6 @@ ast_node* parse_literal(token** tokens, int* nb_tokens);
 /* ast_node* parse_rel(token* tokens, int* nb_tokens); */
 /* ast_node* parse_comp(token* tokens, int* nb_tokens); */
 /* ast_node* parse_type(token* tokens, int* nb_tokens); */
-/* ast_node* parse_float(token* tokens, int* nb_tokens); */
-/* ast_node* parse_string(token* tokens, int* nb_tokens); */
 
 // true iff read has same kind as current
 bool expect(token_kind expected, token* current) {
@@ -226,53 +229,115 @@ bool is_token_punctuation(token* tok, char* value) {
          strncmp(tok->value, value, strlen(value)) == 0;
 }
 
+bool is_token_operator(token* tok, char* value) {
+  return tok->kind == OPERATOR &&
+         strncmp(tok->value, value, strlen(value)) == 0;
+}
+
+ast_node* parse_literal_string(token** tokens, int* nb_tokens) {
+  ast_node* node = (ast_node*)malloc(sizeof(ast_node));
+  assert(node != NULL);
+  node->kind = STRING;
+  node->nb_tokens = 1;
+  char* value = (char*)malloc(sizeof(char) * strlen((*tokens)->value));
+  strcpy(value, (*tokens)->value);
+  node->value = value;
+  *nb_tokens -= 1;
+  return node;
+}
+
+ast_node* parse_literal_negative_integer(token** tokens, int* nb_tokens) {
+  ast_node* node = (ast_node*)malloc(sizeof(ast_node));
+  assert(node != NULL);
+  node->kind = INT;
+  node->nb_tokens = 2;
+  char* value =
+      (char*)malloc(sizeof(char) * (strlen((*(tokens + 1))->value) + 1));
+  value[0] = '-';
+  strcat(value, (*(tokens + 1))->value);
+  node->value = value;
+  *nb_tokens -= 2;
+  return node;
+}
+
+ast_node* parse_literal_postive_integer(token** tokens, int* nb_tokens) {
+  ast_node* node = (ast_node*)malloc(sizeof(ast_node));
+  assert(node != NULL);
+  node->kind = INT;
+  node->nb_tokens = 1;
+  char* value = (char*)malloc(sizeof(char) * strlen((*tokens)->value));
+  strcpy(value, (*tokens)->value);
+  node->value = value;
+  *nb_tokens -= 1;
+  return node;
+}
+
+ast_node* parse_literal_positive_float(token** tokens, int* nb_tokens) {
+  token* left = *tokens;
+  token* right = *(tokens + 2);
+  unsigned long len_left = strlen(left->value);
+  unsigned long len_right = strlen(right->value);
+
+  ast_node* node = (ast_node*)malloc(sizeof(ast_node));
+  assert(node != NULL);
+  node->kind = FLOAT;
+  node->nb_tokens = 3;
+  char* value = (char*)malloc(sizeof(char) * (len_left + 1 + len_right));
+  strcpy(value, left->value);
+  value[len_left] = '.';
+  strcat(value, right->value);
+  node->value = value;
+  *nb_tokens -= 3;
+  return node;
+}
+
+ast_node* parse_literal_negative_float(token** tokens, int* nb_tokens) {
+  token* left = *(tokens + 1);
+  token* right = *(tokens + 3);
+  unsigned long len_left = strlen(left->value);
+  unsigned long len_right = strlen(right->value);
+
+  ast_node* node = (ast_node*)malloc(sizeof(ast_node));
+  assert(node != NULL);
+  node->kind = FLOAT;
+  node->nb_tokens = 4;
+  char* value = (char*)malloc(sizeof(char) * (1 + len_left + 1 + len_right));
+  value[0] = '-';
+  strcat(value, left->value);
+  value[len_left + 1] = '.';
+  strcat(value, right->value);
+  node->value = value;
+  *nb_tokens -= 4;
+  return node;
+}
+
 // string | int | float
 ast_node* parse_literal(token** tokens, int* nb_tokens) {
   if ((*tokens)->kind == LITERAL_STRING) {
     // string - consumes 1 token
-    ast_node* node = (ast_node*)malloc(sizeof(ast_node));
-    assert(node != NULL);
-    node->kind = STRING;
-    node->nb_tokens = 1;
-    char* value = (char*)malloc(sizeof(char) * strlen((*tokens)->value));
-    strcpy(value, (*tokens)->value);
-    node->value = value;
-    *nb_tokens -= 1;
-    return node;
+    return parse_literal_string(tokens, nb_tokens);
+  }
+  if (is_token_operator(*tokens, "-") &&
+      (*nb_tokens < 3 || !is_token_punctuation(*(tokens + 2), "."))) {
+    // negative int consumes 2 tokens
+    return parse_literal_negative_integer(tokens, nb_tokens);
   }
   if ((*tokens)->kind == NUMBER &&
       (*nb_tokens == 1 || !is_token_punctuation(*(tokens + 1), "."))) {
-    // int - consumes 1 token
-
-    ast_node* node = (ast_node*)malloc(sizeof(ast_node));
-    assert(node != NULL);
-    node->kind = INT;
-    node->nb_tokens = 1;
-    char* value = (char*)malloc(sizeof(char) * strlen((*tokens)->value));
-    strcpy(value, (*tokens)->value);
-    node->value = value;
-    *nb_tokens -= 1;
-    return node;
+    // positive int - consumes 1 token
+    return parse_literal_postive_integer(tokens, nb_tokens);
   }
   if ((*tokens)->kind == NUMBER &&
       (*nb_tokens > 2 && is_token_punctuation(*(tokens + 1), "."))) {
-    // float - consumes 3 tokens
-    token* left = *tokens;
-    token* right = *(tokens + 2);
-    unsigned long len_left = strlen(left->value);
-    unsigned long len_right = strlen(right->value);
-
-    ast_node* node = (ast_node*)malloc(sizeof(ast_node));
-    assert(node != NULL);
-    node->kind = FLOAT;
-    node->nb_tokens = 3;
-    char* value = (char*)malloc(sizeof(char) * (len_left + 1 + len_right));
-    strcpy(value, left->value);
-    value[len_left] = '.';
-    strcat(value, right->value);
-    node->value = value;
-    *nb_tokens -= 3;
-    return node;
+    // positive float - consumes 3 tokens
+    return parse_literal_positive_float(tokens, nb_tokens);
+  }
+  if (*nb_tokens > 3 && is_token_operator(*tokens, "-") &&
+      (*(tokens + 1))->kind == NUMBER &&
+      (is_token_punctuation(*(tokens + 2), ".")) &&
+      (*(tokens + 3))->kind == NUMBER) {
+    // negative float - consumes 4 tokens
+    return parse_literal_negative_float(tokens, nb_tokens);
   }
 
   parser_error("Couldn't parse literal %s", (*tokens)->value);
@@ -364,7 +429,8 @@ void destroy_ast(ast_node* node) {
 int main(void) {
   char* input;
   /* input = "DROP TABLE \"user\"";  // OKAY */
-  input = "INSERT INTO \"user\" (0xff,'abc',123.45)";  // OKAY
+  input = "INSERT INTO \"user\" (0xff,'abc',123.45)";              // OKAY
+  input = "INSERT INTO \"user\" (-19,'abc',-123.45,67,890.0123)";  // OKAY
 
   token** tokens = (token**)malloc(sizeof(token) * MAXTOKEN);
   assert(tokens != NULL);
