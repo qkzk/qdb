@@ -112,13 +112,18 @@ select-clause      ::=     'SELECT', projection, 'FROM', tablename ( 'WHERE' con
 insert-clause      ::=     'INSERT', 'INTO', tablename, '(', literal (',' literal)*, ')'.
 update-clause      ::=     'UPDATE', tablename, 'SET', colname, '=', literal (',' colname = literal)* ( 'WHERE', condition ).
 delete-clause      ::=     'DELETE', 'FROM', tablename, ( 'WHERE', condition ).
-create-clause      ::=     'CREATE', 'TABLE', tablename, '(', colname, type, 'PK', (',' colname, type )* ')'.
+create-clause      ::=     'CREATE', 'TABLE', tablename, '(', pk-description, (',' normal-col-desc )* ')'.
 drop-clause        ::=     'DROP', 'TABLE', tablename.
 
 projection         ::=     colname (',' colname)* ) | *.
 
 colname            ::=     identifier.
 tablename          ::=     identifier.
+identifier         ::=     "'", name, "'".
+name               ::=     [_azAZ]([_azAZ09])*
+
+normal-col-desc    ::=     colname, type
+pk-description     ::=     normal-col-desc, 'PK'
 
 condition          ::=     rel | '(', rel, ')'  ( 'AND', condition )* ( 'OR', condition )* .
 rel                ::=     colname, comp-operator, literal.

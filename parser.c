@@ -45,6 +45,7 @@ typedef enum Ast_kind {
   PROJECTION,  // *      "a", "b"
   TABLENAME,   // "users"
   COLNAME,     // "name"
+  COLNAME_PK,  // "name..."
   CONDITION,   // "a" >= 2 AND "b" <= 3
   REL,         // "a" >= 2
   COMP,        // >=
@@ -65,6 +66,7 @@ const char* ast_kind_names[] = {
     [PROJECTION] = "PROJECTION",
     [TABLENAME] = "TABLENAME",
     [COLNAME] = "COLNAME",
+    [COLNAME_PK] = "COLNAME_PK",
     [CONDITION] = "CONDITION",
     [REL] = "REL",
     [COMP] = "COMP",
@@ -162,6 +164,10 @@ bool is_token_keyword_insert(token* tokens) {
   return is_token_keyword_something(tokens, "INSERT");
 }
 
+bool is_token_keyword_create(token* tokens) {
+  return is_token_keyword_something(tokens, "CREATE");
+}
+
 ast_node* create_node_root(ast_kind kind, char* description) {
   ast_node* node = (ast_node*)malloc(sizeof(ast_node));
   assert(node != NULL);
@@ -181,7 +187,11 @@ ast_node* create_node_insert(void) {
   return create_node_root(INSERT, "insert_into");
 }
 
-ast_node* parse_tablename(token** tokens, int* nb_tokens) {
+ast_node* create_node_create(void) {
+  return create_node_root(CREATE, "create_table");
+}
+
+ast_node* parse_identifier(token** tokens, int* nb_tokens) {
   ast_node* node = (ast_node*)malloc(sizeof(ast_node));
   assert(node != NULL);
   node->kind = TABLENAME;
@@ -194,34 +204,8 @@ ast_node* parse_tablename(token** tokens, int* nb_tokens) {
   return node;
 }
 
-ast_node* parse_drop(token** tokens, int* nb_tokens) {
-  if (*nb_tokens != 3) {
-    parser_error(
-        "Wrong number of tokens for 'drop table \"tablename\"': expected 3 got "
-        "%d",
-        *nb_tokens);
-    return NULL;
-  }
-  if (expect(KEYWORD, *tokens) && is_keyword_this(*tokens, "DROP")) {
-    *nb_tokens = *nb_tokens - 1;
-    if (expect(KEYWORD, *(tokens + 1)) &&
-        is_keyword_this(*(tokens + 1), "TABLE")) {
-      *nb_tokens = *nb_tokens - 1;
-      ast_node* root = create_node_drop();
-      if (expect(IDENTIFIER, *(tokens + 2))) {
-        ast_node* child = parse_tablename(tokens + 2, nb_tokens);
-        root->next = child;
-        set_leaf(child);
-        if (*nb_tokens == 0) {
-          return root;
-        } else {
-          parser_error("remaining tokens: ");
-        }
-      }
-    }
-  }
-  parser_error("Couldn't parse drop statement");
-  return NULL;
+ast_node* parse_tablename(token** tokens, int* nb_tokens) {
+  return parse_identifier(tokens, nb_tokens);
 }
 
 bool is_token_punctuation(token* tok, char* value) {
@@ -344,6 +328,36 @@ ast_node* parse_literal(token** tokens, int* nb_tokens) {
   return NULL;
 }
 
+ast_node* parse_drop(token** tokens, int* nb_tokens) {
+  if (*nb_tokens != 3) {
+    parser_error(
+        "Wrong number of tokens for 'drop table \"tablename\"': expected 3 got "
+        "%d",
+        *nb_tokens);
+    return NULL;
+  }
+  if (expect(KEYWORD, *tokens) && is_keyword_this(*tokens, "DROP")) {
+    *nb_tokens = *nb_tokens - 1;
+    if (expect(KEYWORD, *(tokens + 1)) &&
+        is_keyword_this(*(tokens + 1), "TABLE")) {
+      *nb_tokens = *nb_tokens - 1;
+      ast_node* root = create_node_drop();
+      if (expect(IDENTIFIER, *(tokens + 2))) {
+        ast_node* table = parse_tablename(tokens + 2, nb_tokens);
+        root->next = table;
+        set_leaf(table);
+        if (*nb_tokens == 0) {
+          return root;
+        } else {
+          parser_error("remaining tokens: ");
+        }
+      }
+    }
+  }
+  parser_error("Couldn't parse drop statement");
+  return NULL;
+}
+
 ast_node* parse_insert(token** tokens, int* nb_tokens) {
   if (expect(KEYWORD, *tokens) && is_keyword_this(*tokens, "INSERT") &&
       expect(KEYWORD, *(tokens + 1)) &&
@@ -351,10 +365,10 @@ ast_node* parse_insert(token** tokens, int* nb_tokens) {
     ast_node* root = create_node_insert();
     tokens = tokens + 2;
     *nb_tokens -= 2;
-    ast_node* user;
+    ast_node* table;
     if (expect(IDENTIFIER, *tokens)) {
-      user = parse_tablename(tokens, nb_tokens);
-      root->next = user;
+      table = parse_tablename(tokens, nb_tokens);
+      root->next = table;
       *nb_tokens -= 1;
       tokens++;
     } else {
@@ -370,7 +384,7 @@ ast_node* parse_insert(token** tokens, int* nb_tokens) {
       return NULL;
     }
     // ##literal##, ##','## loop
-    ast_node* current = user;
+    ast_node* current = table;
     while (true) {
       if (*nb_tokens <= 0) {
         parser_error("Expected a literal but no token left.");
@@ -402,12 +416,298 @@ ast_node* parse_insert(token** tokens, int* nb_tokens) {
   return NULL;
 }
 
+ast_node* parse_colname(token** tokens, int* nb_tokens) {
+  ast_node* col = parse_identifier(tokens, nb_tokens);
+  if (col == NULL) {
+    parser_error("Couldn't parse the colname.");
+    return NULL;
+  }
+  col->kind = COLNAME;
+  return col;
+}
+
+ast_node* parse_type(token** tokens, int* nb_tokens) {
+  // type ::= 'varchar', '(', int, ')' | 'int' | 'float'.
+  if (is_keyword_this(*tokens, "int")) {
+    ast_node* node = create_node_root(TYPE, "int");
+    *nb_tokens -= 1;
+    tokens += 1;
+    return node;
+  } else if (is_keyword_this(*tokens, "float")) {
+    ast_node* node = create_node_root(TYPE, "float");
+    *nb_tokens -= 1;
+    tokens += 1;
+    return node;
+  } else if (is_keyword_this(*tokens, "varchar")) {
+    printf("found ##varchar## token\n");
+    ast_node* node = create_node_root(TYPE, "varchar");
+    node->nb_tokens = 4;
+    *nb_tokens -= 1;
+    tokens += 1;
+    if (!expect(LEFT_PAREN, *tokens)) {
+      parser_error("Expected left parenthesis. Got %s", (*tokens)->kind);
+      return NULL;
+    }
+    printf("found varchar ##(## token\n");
+    *nb_tokens -= 1;
+    tokens += 1;
+    ast_node* nb_char = parse_literal_postive_integer(tokens, nb_tokens);
+    if (nb_char == NULL) {
+      parser_error("Expected a positive integer got %s", (*tokens)->kind);
+      return NULL;
+    }
+    printf("found varchar ( ##int## token\n");
+    node->next = nb_char;
+    *nb_tokens -= 1;
+    tokens += 1;
+    if (!expect(RIGHT_PAREN, *tokens)) {
+      parser_error("Expected rigt parenthesis. Got %s", (*tokens)->kind);
+      return NULL;
+    }
+    printf("found varchar ( int ##)## token\n");
+    *nb_tokens -= 1;
+    tokens += 1;
+    return node;
+  } else {
+    parser_error("Couldn't parse type. Expected a valid type got %s",
+                 (*tokens)->value);
+    return NULL;
+  }
+}
+
+ast_node* parse_normal_col_desc(token** tokens, int* nb_tokens) {
+  /*
+  normal-col-desc    ::=     colname, type
+  */
+  if (*nb_tokens < 2) {
+    parser_error("Not enough tokens");
+    return NULL;
+  }
+  ast_node* col = parse_colname(tokens, nb_tokens);
+  if (col == NULL) {
+    parser_error("Couldn't parse the column name");
+    return NULL;
+  }
+  printf("parse_normal_col_desc: got value %s\n", col->value);
+  ast_node* type = parse_type(tokens + 1, nb_tokens);
+  if (type == NULL) {
+    return NULL;
+  }
+  col->next = type;
+  *nb_tokens -= 1;
+  return col;
+}
+
+ast_node* parse_primary_column(token** tokens, int* nb_tokens) {
+  ast_node* col = create_node_root(COLNAME_PK, (*tokens)->value);
+  if (col == NULL) {
+    parser_error(
+        "Couldn't parse primary column. Impossible to create the colname");
+    return NULL;
+  }
+  col->nb_tokens = 3;
+  tokens += 1;
+  *nb_tokens -= 1;
+  // type 
+  ast_node* type = col->next;
+  tokens += 2;
+  if (is_keyword_this(*tokens, "pk")) {
+    col->kind = COLNAME_PK;
+    col->nb_tokens = 4;
+    type->nb_tokens = 0;
+    tokens += 1;
+    return col;
+  }
+  parser_error("Couldn't parse primary column");
+  return NULL;
+}
+
+ast_node* parse_create(token** tokens, int* nb_tokens) {
+  int received_tokens = *nb_tokens;
+  printf("parse_create received %d tokens\n", *nb_tokens);
+  // clang-format off
+  /*
+  ( token creates an array of  element 
+  ) token closes the array which is attached to the parent as "children", not next
+  create-clause ::= 'CREATE', 'TABLE', tablename, '(', colname, type, 'PK', (','
+  colname, type )* ')'.
+
+
+  TODO BUG! wrong number of consumed tokens
+  input = "CREATE TABLE \"user\" ( \"a\" int pk , \"b\" float  , \"c\" varchar (   32  )  )";
+           1      2     3        4 5     6   7  8  9     10   11 12    13      14  15  16 17     
+  17 tokens ;
+  === AST START ===
+
+  2     kind: (CREATE) - value (create_table) - nb tokens (2)
+  1       kind: (TABLENAME) - value ("user") - nb tokens (1)
+  4         kind: (COLNAME_PK) - value ("a") - nb tokens (3)          <----- may be in an array of nodes ? [colpk, col, col]
+  0           kind: (TYPE) - value (int) - nb tokens (2)
+  3             kind: (TABLENAME) - value ("b") - nb tokens (1)       <----- should be colname 
+  0               kind: (TYPE) - value (float) - nb tokens (2)
+  7                 kind: (TABLENAME) - value ("c") - nb tokens (1)   <----- should be colname
+  0                   kind: (TYPE) - value (varchar) - nb tokens (4)
+  0                     kind: (INT) - value (32) - nb tokens (1)
+
+  === AST END  ===
+  */
+  // clang-format on
+  if (expect(KEYWORD, *tokens) && is_token_keyword_create(*tokens) &&
+      expect(KEYWORD, *(tokens + 1)) &&
+      is_keyword_this(*(tokens + 1), "TABLE")) {
+    ast_node* root = create_node_create();
+    tokens = tokens + 2;
+    *nb_tokens -= 2;
+    // tablename
+    printf("after 'create table' tokens left %d\n", *nb_tokens);
+    assert(*nb_tokens == received_tokens - 2);
+    if (!expect(IDENTIFIER, *tokens)) {
+      parser_error("Expected a tablename, got %s", (*tokens)->value);
+      return NULL;
+    }
+    ast_node* table = parse_tablename(tokens, nb_tokens);
+    root->next = table;
+    if (*nb_tokens <= 3) {
+      parser_error("not enough tokens");
+      return NULL;
+    }
+    tokens = tokens + 1;
+    // (
+    if (!expect(LEFT_PAREN, *tokens)) {
+      parser_error("expected left parenthesis, got: ", (*tokens)->value);
+      return NULL;
+    }
+    tokens = tokens + 1;
+    *nb_tokens -= 1;
+    printf("after 'create table tablename (' tokens left %d\n", *nb_tokens);
+    assert(*nb_tokens == received_tokens - 4);
+    // first column : colname type 'PK'
+    ast_node* first_col = parse_primary_column(tokens, nb_tokens);
+    tokens = tokens + first_col->nb_tokens;
+    table->next = first_col;
+    ast_node* current = first_col->next;
+    // do we have other columns ?
+    if (expect(RIGHT_PAREN, *tokens)) {
+      // no other column, advance
+      set_leaf(first_col);
+      print_ast(root);
+      if (*nb_tokens != 1) {
+        if ((*tokens) != NULL) {
+          printf("last token: %s\n", (*tokens)->value);
+        }
+        parser_error("too much tokens left expected 1 got %d", *nb_tokens);
+        return NULL;
+      }
+      return root;
+    }
+    if (!is_token_punctuation(*tokens, ",")) {
+      parser_error("Expected , got %s", (*tokens)->value);
+      return NULL;
+    }
+    tokens += 1;
+    *nb_tokens -= 1;
+    // yes, other columns, advance
+    ast_node* next;
+    while (true) {
+      printf("\nnew coldesc: %d tokens left\n", *nb_tokens);
+      print_token(*tokens);
+      next = parse_identifier(tokens, nb_tokens);
+      if (next == NULL) {
+        parser_error("Couldn't parse the colname");
+        return NULL;
+      }
+      next->kind = COLNAME;
+      tokens += 1;
+      current->next = next;
+      current = next;
+      // current is the colname, which will hold the nb of used tokens for this
+      // column.
+      if (is_keyword_this(*tokens, "varchar")) {
+        // 7 tokens will be used
+        // varchar
+        current->nb_tokens = 7;
+        next = create_node_root(TYPE, (*tokens)->value);
+        if (next == NULL) {
+          parser_error("Couldn't parse the type");
+          return NULL;
+        }
+        tokens += 1;
+        next->nb_tokens = 0;
+        current->next = next;
+        current = next;
+        // left parenthesis
+        if (!expect(LEFT_PAREN, *tokens)) {
+          parser_error("Expected left parenthesis, got %s", (*tokens)->value);
+          return NULL;
+        }
+        tokens += 1;
+        *nb_tokens -= 1;
+        // integer
+        next = parse_literal_postive_integer(tokens, nb_tokens);
+        if (next == NULL) {
+          parser_error("Couldn't parse varchar column width");
+          return NULL;
+        }
+        tokens += 1;
+        next->nb_tokens = 0;
+        current->next = next;
+        next = current;
+        // right parent
+        if (!expect(RIGHT_PAREN, *tokens)) {
+          parser_error("Expected a right parenthesis");
+          return NULL;
+        }
+        tokens += 1;
+        *nb_tokens -= 1;
+      } else if (is_keyword_this(*tokens, "int") ||
+                 is_keyword_this(*tokens, "float")) {
+        // int or float
+        current->nb_tokens = 3;
+        next = create_node_root(TYPE, (*tokens)->value);
+        if (next == NULL) {
+          parser_error("Couldn't create the node");
+          return NULL;
+        }
+        tokens += 1;
+        next->nb_tokens = 0;
+        current->next = next;
+        next = current;
+      } else {
+        parser_error("expected a type : int, float or varchar, got %s",
+                     (*tokens)->value);
+        return NULL;
+      }
+
+      // is the list of column finished ?
+      if (expect(RIGHT_PAREN, *tokens)) {
+        // yes, break the look
+        break;
+      } else if (!is_token_punctuation(*tokens, ",")) {
+        parser_error("expected a right parenthesis or a comma, got %s",
+                     (*tokens)->value);
+        return NULL;
+      }
+      tokens += 1;
+      *nb_tokens -= 1;
+      printf("After parsing a whole column desc. there's %d tokens left\n",
+             *nb_tokens);
+      print_ast(root);
+    }
+    set_leaf(current);
+    return root;
+  }
+  return NULL;
+}
+
 ast_node* parse_statement(token** tokens, int* nb_tokens) {
   if (is_token_keyword_drop(*tokens)) {
     return parse_drop(tokens, nb_tokens);
   }
   if (is_token_keyword_insert(*tokens)) {
     return parse_insert(tokens, nb_tokens);
+  }
+  if (is_token_keyword_create(*tokens)) {
+    return parse_create(tokens, nb_tokens);
   }
   parser_error("Couldn't parse statement");
   return NULL;
@@ -428,9 +728,16 @@ void destroy_ast(ast_node* node) {
 
 int main(void) {
   char* input;
-  /* input = "DROP TABLE \"user\"";  // OKAY */
-  input = "INSERT INTO \"user\" (0xff,'abc',123.45)";              // OKAY
-  input = "INSERT INTO \"user\" (-19,'abc',-123.45,67,890.0123)";  // OKAY
+  // clang-format off
+  input = "INSERT INTO \"user\" (0xff,'abc',123.45)";                                 // OKAY success
+  input = "INSERT INTO \"user\" ()";                                                  // OKAY failure
+  input = "INSERT INTO \"user\" (-19, 'abc', -1.23, 67, 89.01)";                      // OKAY success
+  input = "DROP TABLE";                                                               // OKAY failure
+  input = "DROP TABLE \"user\"";                                                      // OKAY success
+  input = "CREATE TABLE \"user\" (\"a\" int pk )";                                    // OKAY success
+  input = "CREATE TABLE \"user\" (\"a\" int pk, \"b\" float, \"c\" varchar ( 32 ) )"; // OKAY success
+  input = "CREATE TABLE \"user\" (\"a\" varchar(32) pk, \"b\" float, \"c\" varchar ( 32 ) )"; // OKAY success
+  // clang-format on
 
   token** tokens = (token**)malloc(sizeof(token) * MAXTOKEN);
   assert(tokens != NULL);

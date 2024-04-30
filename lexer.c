@@ -41,14 +41,16 @@ char* repr_kind(token_kind kind) {
   }
 }
 
-#define NBKEYWORDS 30
+#define NBKEYWORDS 34
 // clang-format off
 const char *skeywords[NBKEYWORDS] = {
   "drop",     "DROP",
   "from",     "FROM",
   "select",   "SELECT",
   "create",   "CREATE",
+  "float",    "FLOAT",
   "insert",   "INSERT",
+  "int",      "INT",
   "into",     "INTO",
   "set",      "SET",
   "table",    "TABLE",
@@ -63,7 +65,7 @@ const char *skeywords[NBKEYWORDS] = {
 // clang-format on
 
 bool is_keyword(char* word, int len) {
-  if (len < 3 || len > 6) {
+  if (len < 2 || len > 7) {
     return false;
   }
 
