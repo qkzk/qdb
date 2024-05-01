@@ -382,7 +382,7 @@ ast_node* parse_insert(token** tokens, int* nb_tokens) {
                    (*tokens)->value);
     }
     if (expect(LEFT_PAREN, *tokens)) {
-      tokens = tokens + 1;
+      tokens += 1;
       *nb_tokens -= 1;
     } else {
       parser_error("Expected ( after \"insert into 'tablename'\" got %s",
@@ -481,27 +481,57 @@ ast_node* parse_type(token** tokens, int* nb_tokens) {
   }
 }
 
-ast_node* parse_normal_col_desc(token** tokens, int* nb_tokens) {
-  /*
-  normal-col-desc    ::=     colname, type
-  */
-  if (*nb_tokens < 2) {
-    parser_error("Not enough tokens");
-    return NULL;
-  }
-  ast_node* col = parse_colname(tokens, nb_tokens);
-  if (col == NULL) {
-    parser_error("Couldn't parse the column name");
-    return NULL;
-  }
-  printf("parse_normal_col_desc: got value %s\n", col->value);
-  ast_node* type = parse_type(tokens + 1, nb_tokens);
+ast_node* parse_int_float(token** tokens, int* nb_tokens) {
+  // consumes 1 token
+  ast_node* type = create_node_root(TYPE, (*tokens)->value);
   if (type == NULL) {
+    parser_error("Couldn't create the node");
     return NULL;
   }
-  col->next = type;
+  tokens += 1;
+  type->nb_tokens = 0;
   *nb_tokens -= 1;
-  return col;
+  return type;
+}
+
+ast_node* parse_varchar(token** tokens, int* nb_tokens) {
+  // consumes 4 tokens
+
+  // 7 tokens will be used
+  // varchar
+  ast_node* next;
+  ast_node* current;
+  ast_node* type = create_node_root(TYPE, (*tokens)->value);
+  if (type == NULL) {
+    parser_error("Couldn't parse the type");
+    return NULL;
+  }
+  tokens += 1;
+  type->nb_tokens = 0;
+  // left parenthesis
+  if (!expect(LEFT_PAREN, *tokens)) {
+    parser_error("Expected left parenthesis, got %s", (*tokens)->value);
+    return NULL;
+  }
+  tokens += 1;
+  *nb_tokens -= 1;
+  // integer
+  next = parse_literal_postive_integer(tokens, nb_tokens);
+  if (next == NULL) {
+    parser_error("Couldn't parse varchar column width");
+    return NULL;
+  }
+  tokens += 1;
+  next->nb_tokens = 0;
+  type->next = next;
+  // right parent
+  if (!expect(RIGHT_PAREN, *tokens)) {
+    parser_error("Expected a right parenthesis");
+    return NULL;
+  }
+  tokens += 1;
+  *nb_tokens -= 1;
+  return type;
 }
 
 ast_node* parse_primary_column(token** tokens, int* nb_tokens) {
@@ -519,51 +549,10 @@ ast_node* parse_primary_column(token** tokens, int* nb_tokens) {
   strncpy(col->value, (*tokens)->value, (*tokens)->len);
   *nb_tokens -= 1;
   return col;
-  /* // type */
-  /* ast_node* type = parse_type(tokens, nb_tokens); */
-  /* type = col->next; */
-  /* tokens += 2; */
-  /* if (is_keyword_this(*tokens, "pk")) { */
-  /*   col->kind = COLNAME_PK; */
-  /*   col->nb_tokens = 4; */
-  /*   type->nb_tokens = 0; */
-  /*   tokens += 1; */
-  /*   return col; */
-  /* } */
-  /* parser_error("Couldn't parse primary column"); */
-  /* return NULL; */
 }
 
 ast_node* parse_create(token** tokens, int* nb_tokens) {
   int received_tokens = *nb_tokens;
-  printf("parse_create received %d tokens\n", *nb_tokens);
-  // clang-format off
-  /*
-  ( token creates an array of  element 
-  ) token closes the array which is attached to the parent as "children", not next
-  create-clause ::= 'CREATE', 'TABLE', tablename, '(', colname, type, 'PK', (','
-  colname, type )* ')'.
-
-
-  TODO BUG! wrong number of consumed tokens
-  input = "CREATE TABLE \"user\" ( \"a\" int pk , \"b\" float  , \"c\" varchar (   32  )  )";
-           1      2     3        4 5     6   7  8  9     10   11 12    13      14  15  16 17     
-  17 tokens ;
-  === AST START ===
-
-  2     kind: (CREATE) - value (create_table) - nb tokens (2)
-  1       kind: (TABLENAME) - value ("user") - nb tokens (1)
-  4         kind: (COLNAME_PK) - value ("a") - nb tokens (3)          <----- may be in an array of nodes ? [colpk, col, col]
-  0           kind: (TYPE) - value (int) - nb tokens (2)
-  3             kind: (TABLENAME) - value ("b") - nb tokens (1)       <----- should be colname 
-  0               kind: (TYPE) - value (float) - nb tokens (2)
-  7                 kind: (TABLENAME) - value ("c") - nb tokens (1)   <----- should be colname
-  0                   kind: (TYPE) - value (varchar) - nb tokens (4)
-  0                     kind: (INT) - value (32) - nb tokens (1)
-
-  === AST END  ===
-  */
-  // clang-format on
   if (!is_token_keyword_create(*tokens) ||
       !is_keyword_this(*(tokens + 1), "TABLE")) {
     parser_error("Expected CREATE TABLE.");
@@ -575,8 +564,6 @@ ast_node* parse_create(token** tokens, int* nb_tokens) {
   *nb_tokens -= 2;
 
   // tablename
-  printf("after 'create table' tokens left %d\n", *nb_tokens);
-  assert(*nb_tokens == received_tokens - 2);
   if (!expect(IDENTIFIER, *tokens)) {
     parser_error("Expected a tablename, got %s", (*tokens)->value);
     return NULL;
@@ -587,75 +574,37 @@ ast_node* parse_create(token** tokens, int* nb_tokens) {
     parser_error("not enough tokens");
     return NULL;
   }
-  tokens = tokens + 1;
+  tokens += 1;
 
   // (
   if (!expect(LEFT_PAREN, *tokens)) {
     parser_error("expected left parenthesis, got: ", (*tokens)->value);
     return NULL;
   }
-  tokens = tokens + 1;
+  tokens += 1;
   *nb_tokens -= 1;
 
   // first column : colname type 'PK'
-  printf("after 'create table tablename (' tokens left %d\n", *nb_tokens);
-  assert(*nb_tokens == received_tokens - 4);
   ast_node* first_col = parse_primary_column(tokens, nb_tokens);
-  tokens = tokens + 1;
+  tokens += 1;
   table->next = first_col;
   ast_node* current = first_col;
   ast_node* next;
   // type of first column
   if (is_keyword_this(*tokens, "varchar")) {
-    // 7 tokens will be used
-    // varchar
+    next = parse_varchar(tokens, nb_tokens);
+    current->next = next;
     current->nb_tokens = 7;
-    next = create_node_root(TYPE, (*tokens)->value);
-    if (next == NULL) {
-      parser_error("Couldn't parse the type");
-      return NULL;
-    }
-    tokens += 1;
-    next->nb_tokens = 0;
-    current->next = next;
-    current = next;
-    // left parenthesis
-    if (!expect(LEFT_PAREN, *tokens)) {
-      parser_error("Expected left parenthesis, got %s", (*tokens)->value);
-      return NULL;
-    }
-    tokens += 1;
-    *nb_tokens -= 1;
-    // integer
-    next = parse_literal_postive_integer(tokens, nb_tokens);
-    if (next == NULL) {
-      parser_error("Couldn't parse varchar column width");
-      return NULL;
-    }
-    tokens += 1;
-    next->nb_tokens = 0;
-    current->next = next;
-    current = next;
-    // right parent
-    if (!expect(RIGHT_PAREN, *tokens)) {
-      parser_error("Expected a right parenthesis");
-      return NULL;
-    }
-    tokens += 1;
-    *nb_tokens -= 1;
+    tokens += 4;
+    current = current->next->next;
   } else if (is_keyword_this(*tokens, "int") ||
              is_keyword_this(*tokens, "float")) {
     // int or float
+    next = parse_int_float(tokens, nb_tokens);
     current->nb_tokens = 3;
-    next = create_node_root(TYPE, (*tokens)->value);
-    if (next == NULL) {
-      parser_error("Couldn't create the node");
-      return NULL;
-    }
     tokens += 1;
-    next->nb_tokens = 0;
     current->next = next;
-    next = current;
+    current = next;
   } else {
     parser_error("expected a type : int, float or varchar, got %s",
                  (*tokens)->value);
@@ -667,11 +616,10 @@ ast_node* parse_create(token** tokens, int* nb_tokens) {
     parser_error("Expected pk, got %s", (*tokens)->value);
     return NULL;
   }
+  // account for PK token :
   tokens += 1;
   *nb_tokens -= 1;
   first_col->nb_tokens += 1;
-
-  print_ast(root);
 
   // do we have other columns ?
   if (expect(RIGHT_PAREN, *tokens)) {
@@ -679,9 +627,6 @@ ast_node* parse_create(token** tokens, int* nb_tokens) {
     set_leaf(first_col);
     print_ast(root);
     if (*nb_tokens != 1) {
-      if ((*tokens) != NULL) {
-        printf("last token: %s\n", (*tokens)->value);
-      }
       parser_error("too much tokens left expected 1 got %d", *nb_tokens);
       return NULL;
     }
@@ -696,8 +641,6 @@ ast_node* parse_create(token** tokens, int* nb_tokens) {
   // yes, other columns, advance
   /* ast_node* next; */
   while (true) {
-    printf("\nnew coldesc: %d tokens left\n", *nb_tokens);
-    print_token(*tokens);
     next = parse_identifier(tokens, nb_tokens);
     if (next == NULL) {
       parser_error("Couldn't parse the colname");
@@ -710,55 +653,19 @@ ast_node* parse_create(token** tokens, int* nb_tokens) {
     // current is the colname, which will hold the nb of used tokens for this
     // column.
     if (is_keyword_this(*tokens, "varchar")) {
-      // 7 tokens will be used
-      // varchar
+      next = parse_varchar(tokens, nb_tokens);
+      current->next = next;
       current->nb_tokens = 7;
-      next = create_node_root(TYPE, (*tokens)->value);
-      if (next == NULL) {
-        parser_error("Couldn't parse the type");
-        return NULL;
-      }
-      tokens += 1;
-      next->nb_tokens = 0;
-      current->next = next;
-      current = next;
-      // left parenthesis
-      if (!expect(LEFT_PAREN, *tokens)) {
-        parser_error("Expected left parenthesis, got %s", (*tokens)->value);
-        return NULL;
-      }
-      tokens += 1;
-      *nb_tokens -= 1;
-      // integer
-      next = parse_literal_postive_integer(tokens, nb_tokens);
-      if (next == NULL) {
-        parser_error("Couldn't parse varchar column width");
-        return NULL;
-      }
-      tokens += 1;
-      next->nb_tokens = 0;
-      current->next = next;
-      current = next;
-      // right parent
-      if (!expect(RIGHT_PAREN, *tokens)) {
-        parser_error("Expected a right parenthesis");
-        return NULL;
-      }
-      tokens += 1;
-      *nb_tokens -= 1;
+      tokens += 4;
+      current = current->next->next;
     } else if (is_keyword_this(*tokens, "int") ||
                is_keyword_this(*tokens, "float")) {
       // int or float
+      next = parse_int_float(tokens, nb_tokens);
       current->nb_tokens = 3;
-      next = create_node_root(TYPE, (*tokens)->value);
-      if (next == NULL) {
-        parser_error("Couldn't create the node");
-        return NULL;
-      }
       tokens += 1;
-      next->nb_tokens = 0;
       current->next = next;
-      next = current;
+      current = next;
     } else {
       parser_error("expected a type : int, float or varchar, got %s",
                    (*tokens)->value);
@@ -776,9 +683,6 @@ ast_node* parse_create(token** tokens, int* nb_tokens) {
     }
     tokens += 1;
     *nb_tokens -= 1;
-    printf("After parsing a whole column desc. there's %d tokens left\n",
-           *nb_tokens);
-    print_ast(root);
   }
   set_leaf(current);
   return root;
