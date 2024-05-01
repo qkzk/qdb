@@ -54,6 +54,7 @@ typedef enum Ast_kind {
   INT,         // 0xff 32 -23
   FLOAT,       // -14.56
   STRING,      // 'bla'
+  L_PAREN,
 } ast_kind;
 
 const char* ast_kind_names[] = {
@@ -75,6 +76,7 @@ const char* ast_kind_names[] = {
     [INT] = "INT",
     [FLOAT] = "FLOAT",
     [STRING] = "STRING",
+    [L_PAREN] = "LEFT_PAREN",
 };
 
 void print_ask_kind(ast_kind kind) {
@@ -87,15 +89,17 @@ typedef struct ASTNode {
   char* value;
   long i_value;
   double f_value;
-  struct ASTNode* next;
+  struct ASTNode* left;
+  struct ASTNode* right;
 } ast_node;
 
 void set_leaf(ast_node* leaf) {
-  leaf->next = NULL;
+  leaf->left = NULL;
+  leaf->right = NULL;
 }
 
 bool is_leaf(ast_node* node) {
-  return node->next == NULL;
+  return node->left == NULL && node->right == NULL;
 }
 
 void print_node(ast_node* node) {
@@ -108,8 +112,11 @@ void print_ast_rec(ast_node* node, int indent) {
     printf(" ");
   }
   print_node(node);
-  if (!is_leaf(node)) {
-    print_ast_rec(node->next, indent + 2);
+  if (node->left != NULL) {
+    print_ast_rec(node->left, indent + 2);
+  }
+  if (node->right != NULL) {
+    print_ast_rec(node->right, indent + 2);
   }
 }
 
@@ -178,6 +185,8 @@ ast_node* create_node_root(ast_kind kind, char* description) {
   char* value = (char*)malloc(sizeof(char) * strlen(description));
   strcpy(value, description);
   node->value = value;
+  node->left = NULL;
+  node->right = NULL;
   return node;
 }
 
@@ -350,7 +359,7 @@ ast_node* parse_drop(token** tokens, int* nb_tokens) {
       ast_node* root = create_node_drop();
       if (expect(IDENTIFIER, *(tokens + 2))) {
         ast_node* table = parse_tablename(tokens + 2, nb_tokens);
-        root->next = table;
+        root->left = table;
         set_leaf(table);
         if (*nb_tokens == 0) {
           return root;
@@ -374,7 +383,7 @@ ast_node* parse_insert(token** tokens, int* nb_tokens) {
     ast_node* table;
     if (expect(IDENTIFIER, *tokens)) {
       table = parse_tablename(tokens, nb_tokens);
-      root->next = table;
+      root->left = table;
       *nb_tokens -= 1;
       tokens++;
     } else {
@@ -401,7 +410,7 @@ ast_node* parse_insert(token** tokens, int* nb_tokens) {
         return NULL;
       }
       tokens = tokens + (next->nb_tokens);
-      current->next = next;
+      current->left = next;
       current = next;
       if (!is_token_punctuation(*tokens, ",")) {
         set_leaf(current);
@@ -463,7 +472,7 @@ ast_node* parse_type(token** tokens, int* nb_tokens) {
       return NULL;
     }
     printf("found varchar ( ##int## token\n");
-    node->next = nb_char;
+    node->left = nb_char;
     *nb_tokens -= 1;
     tokens += 1;
     if (!expect(RIGHT_PAREN, *tokens)) {
@@ -523,7 +532,7 @@ ast_node* parse_varchar(token** tokens, int* nb_tokens) {
   }
   tokens += 1;
   next->nb_tokens = 0;
-  type->next = next;
+  type->left = next;
   // right parent
   if (!expect(RIGHT_PAREN, *tokens)) {
     parser_error("Expected a right parenthesis");
@@ -569,7 +578,7 @@ ast_node* parse_create(token** tokens, int* nb_tokens) {
     return NULL;
   }
   ast_node* table = parse_tablename(tokens, nb_tokens);
-  root->next = table;
+  root->left = table;
   if (*nb_tokens <= 3) {
     parser_error("not enough tokens");
     return NULL;
@@ -587,23 +596,23 @@ ast_node* parse_create(token** tokens, int* nb_tokens) {
   // first column : colname type 'PK'
   ast_node* first_col = parse_primary_column(tokens, nb_tokens);
   tokens += 1;
-  table->next = first_col;
+  table->left = first_col;
   ast_node* current = first_col;
   ast_node* next;
   // type of first column
   if (is_keyword_this(*tokens, "varchar")) {
     next = parse_varchar(tokens, nb_tokens);
-    current->next = next;
+    current->left = next;
     current->nb_tokens = 7;
     tokens += 4;
-    current = current->next->next;
+    current = current->left->left;
   } else if (is_keyword_this(*tokens, "int") ||
              is_keyword_this(*tokens, "float")) {
     // int or float
     next = parse_int_float(tokens, nb_tokens);
     current->nb_tokens = 3;
     tokens += 1;
-    current->next = next;
+    current->left = next;
     current = next;
   } else {
     parser_error("expected a type : int, float or varchar, got %s",
@@ -648,23 +657,23 @@ ast_node* parse_create(token** tokens, int* nb_tokens) {
     }
     next->kind = COLNAME;
     tokens += 1;
-    current->next = next;
+    current->left = next;
     current = next;
     // current is the colname, which will hold the nb of used tokens for this
     // column.
     if (is_keyword_this(*tokens, "varchar")) {
       next = parse_varchar(tokens, nb_tokens);
-      current->next = next;
+      current->left = next;
       current->nb_tokens = 7;
       tokens += 4;
-      current = current->next->next;
+      current = current->left->left;
     } else if (is_keyword_this(*tokens, "int") ||
                is_keyword_this(*tokens, "float")) {
       // int or float
       next = parse_int_float(tokens, nb_tokens);
       current->nb_tokens = 3;
       tokens += 1;
-      current->next = next;
+      current->left = next;
       current = next;
     } else {
       parser_error("expected a type : int, float or varchar, got %s",
@@ -688,6 +697,205 @@ ast_node* parse_create(token** tokens, int* nb_tokens) {
   return root;
 }
 
+#define MAXSTACK 1024
+
+typedef struct StackNode {
+  int sp;
+  ast_node* nodes[MAXSTACK];
+} stack_node;
+
+void push(stack_node* stack, ast_node* node) {
+  if (stack->sp + 1 >= MAXSTACK) {
+    parser_error("output stack is full");
+    exit(1);
+  }
+  stack->nodes[stack->sp++] = node;
+}
+
+bool stack_is_empty(stack_node* stack) {
+  return stack->sp <= 0;
+}
+
+bool stack_is_full(stack_node* stack) {
+  return stack->sp >= MAXSTACK;
+}
+
+ast_node* pop(stack_node* stack) {
+  if (stack->sp <= 0) {
+    parser_error("Cannot pop from empty stack");
+    exit(2);
+  }
+  return stack->nodes[--(stack->sp)];
+}
+
+ast_node* peek(stack_node* stack) {
+  if (stack_is_empty(stack)) {
+    parser_error("Cannot peek from empty stack");
+    exit(3);
+  }
+  return stack->nodes[stack->sp - 1];
+}
+
+bool is_token_comparison(token* tok) {
+  return expect(COMPARISON, tok);
+}
+
+bool is_token_where_leaf(token* tok) {
+  return expect(IDENTIFIER, tok) || expect(NUMBER, tok) ||
+         expect(LITERAL_STRING, tok);
+}
+
+ast_node* create_where_leaf(token** tokens, int* nb_tokens) {
+  ast_node* leaf;
+  switch ((*tokens)->kind) {
+    case IDENTIFIER:
+      leaf = parse_identifier(tokens, nb_tokens);
+      leaf->kind = COLNAME;
+      break;
+    case NUMBER:
+      leaf = parse_literal(tokens, nb_tokens);
+      break;
+    case LITERAL_STRING:
+      leaf = parse_literal(tokens, nb_tokens);
+      break;
+    default:
+      parser_error("token isn't a leaf.");
+      return NULL;
+      break;
+  }
+  return leaf;
+}
+
+ast_node* create_left_paren(void) {
+  return create_node_root(L_PAREN, "(");
+}
+
+ast_node* create_comparison(token** tokens, int* nb_tokens) {
+  /* comparison can use 1 or 2 tokens */
+  ast_node* comp = create_node_root(COMP, (*tokens)->value);
+  if (comp == NULL) {
+    parser_error("Couldn't create COMP node");
+    return NULL;
+  }
+  // if the next token is a comparison...
+  if (expect(COMPARISON, *(tokens + 1))) {
+    printf("next is a comparison \n");
+    comp->value = (char*)realloc(comp->value, sizeof(char) * 3);
+    printf("realloc okay\n");
+    strncat(comp->value, (*(tokens + 1))->value, 1);
+    comp->nb_tokens = 2;
+    *nb_tokens -= 1;
+  }
+  return comp;
+}
+
+ast_node* parse_where(token** tokens, int* nb_tokens) {
+  /*
+  https://gist.github.com/tomdaley92/507c3a99c56b779144d9c79c0a3900be
+  */
+  ast_node* where = create_node_root(CONDITION, "where");
+  if (where == NULL) {
+    parser_error("Couldn't create where node");
+    return NULL;
+  }
+  tokens += 1;
+  *nb_tokens -= 1;
+
+  // create stacks
+  stack_node* output;
+  output = (stack_node*)malloc(sizeof(stack_node));
+  assert(output != NULL);
+  output->sp = 0;
+
+  stack_node* comps;
+  comps = (stack_node*)malloc(sizeof(stack_node));
+  assert(comps != NULL);
+  comps->sp = 0;
+
+  // main loop
+  while (*nb_tokens > 0) {
+    if (expect(LEFT_PAREN, *tokens)) {
+      // left parenthesis
+      ast_node* left_paren = create_left_paren();
+      if (left_paren == NULL) {
+        parser_error("Couldn't create left parent");
+        return NULL;
+      }
+      push(comps, left_paren);
+
+    } else if (is_token_where_leaf(*tokens)) {
+      // leaf
+      ast_node* leaf = create_where_leaf(tokens, nb_tokens);
+      if (leaf == NULL) {
+        return NULL;
+      }
+      // a leaf node decrement the number of tokens, it has to be set back
+      *nb_tokens += leaf->nb_tokens;
+      push(output, leaf);
+
+    } else if (is_token_comparison(*tokens)) {
+      // comparison
+      while (!stack_is_empty(comps)) {
+        if (peek(comps)->kind == L_PAREN) {
+          break;
+        }
+        ast_node* comp = pop(comps);
+        ast_node* right = pop(output);
+        ast_node* left = pop(output);
+        comp->left = left;
+        comp->right = right;
+        push(output, comp);
+      }
+      ast_node* comp = create_comparison(tokens, nb_tokens);
+      if (comp == NULL) {
+        return NULL;
+      }
+      printf("comp: value %s\n", comp->value);
+      if (comp->nb_tokens > 1) {
+        tokens += (comp->nb_tokens - 1);
+      }
+      push(comps, comp);
+
+    } else if (expect(RIGHT_PAREN, *tokens)) {
+      print_token(*tokens);
+      // right parenthesis
+      while (!stack_is_empty(comps)) {
+        if (peek(comps)->kind == L_PAREN) {
+          break;
+        }
+        ast_node* comp = pop(comps);
+        ast_node* right = pop(output);
+        ast_node* left = pop(output);
+        comp->left = left;
+        comp->right = right;
+        push(output, comp);
+      }
+      ast_node* lparen = pop(comps);
+      if (lparen->kind != L_PAREN) {
+        parser_error("Expected a ( from stack, got %s", lparen->value);
+        return NULL;
+      }
+
+    } else {
+      parser_error("Unexpected token in where statement: %s", (*tokens)->kind);
+      return NULL;
+    }
+
+    // next token
+    tokens += 1;
+    *nb_tokens -= 1;
+  }
+
+  ast_node* left = pop(output);
+  where->left = left;
+  if (!stack_is_empty(output)) {
+    parser_error("Output stack should be empty");
+    print_ast(where);
+    return NULL;
+  }
+  return where;
+};
+
 ast_node* parse_statement(token** tokens, int* nb_tokens) {
   if (is_token_keyword_drop(*tokens)) {
     return parse_drop(tokens, nb_tokens);
@@ -697,6 +905,10 @@ ast_node* parse_statement(token** tokens, int* nb_tokens) {
   }
   if (is_token_keyword_create(*tokens)) {
     return parse_create(tokens, nb_tokens);
+  }
+  // TODO: remove it's not a clause
+  if (is_token_keyword_something(*tokens, "WHERE")) {
+    return parse_where(tokens, nb_tokens);
   }
   parser_error("Couldn't parse statement");
   return NULL;
@@ -709,7 +921,7 @@ void destroy_ast(ast_node* node) {
     if (current->value != NULL) {
       free(current->value);
     }
-    next = current->next;
+    next = current->left;
     free(current);
     current = next;
   }
@@ -718,14 +930,24 @@ void destroy_ast(ast_node* node) {
 int main(void) {
   char* input;
   // clang-format off
-  input = "INSERT INTO \"user\" (0xff,'abc',123.45)";                                 // OKAY success
-  input = "INSERT INTO \"user\" ()";                                                  // OKAY failure
-  input = "INSERT INTO \"user\" (-19, 'abc', -1.23, 67, 89.01)";                      // OKAY success
-  input = "DROP TABLE";                                                               // OKAY failure
-  input = "DROP TABLE \"user\"";                                                      // OKAY success
-  input = "CREATE TABLE \"user\" (\"a\" int pk )";                                    // OKAY success
-  input = "CREATE TABLE \"user\" (\"a\" int pk, \"b\" float, \"c\" varchar ( 32 ) )"; // OKAY success
+  // insert into clause 
+  input = "INSERT INTO \"user\" (0xff,'abc',123.45)";                                         // OKAY success
+  input = "INSERT INTO \"user\" ()";                                                          // OKAY failure
+  input = "INSERT INTO \"user\" (-19, 'abc', -1.23, 67, 89.01)";                              // OKAY success
+  // drop table clause 
+  input = "DROP TABLE";                                                                       // OKAY failure
+  input = "DROP TABLE \"user\"";                                                              // OKAY success
+  // create table clause 
+  input = "CREATE TABLE \"user\" (\"a\" int pk )";                                            // OKAY success
+  input = "CREATE TABLE \"user\" (\"a\" int pk, \"b\" float, \"c\" varchar ( 32 ) )";         // OKAY success
   input = "CREATE TABLE \"user\" (\"a\" varchar(32) pk, \"b\" float, \"c\" varchar ( 32 ) )"; // OKAY success
+  // complex condition statement
+  input = "WHERE (\"a\" >= 3) OR (\"b\" < 3)";
+  // comparison statement
+  input = "WHERE ( \"a\" = 2 )";                                                              // OKAY success
+  input = "WHERE ( (\"a\" > 1) OR (\"b\" < 2) ) AND (  (\"c\" = 3) OR (\"d\" > 4) )";         // OKAY failure (wrong parenthesis)
+  input = "WHERE ( \"a\" >= 3 )";                                                             // OKAY success
+  input = "WHERE ( ( (\"a\" >= 1) OR (\"b\" != 2) ) AND ( (\"c\" >= 3) OR (\"d\" = 4) ))";       // FAIL
   // clang-format on
 
   token** tokens = (token**)malloc(sizeof(token) * MAXTOKEN);

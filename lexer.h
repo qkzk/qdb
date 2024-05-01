@@ -6,7 +6,8 @@ typedef enum Token_kind {
   IDENTIFIER,      // variable name ()
   LITERAL_STRING,  // 'abc' "abc"
   NUMBER,          // 123 0123 0x123
-  OPERATOR,        // = != < > <= >= + - * / %
+  OPERATOR,        // + - * / %
+  COMPARISON,      // = != < > <= >=
   LEFT_PAREN,      // (
   RIGHT_PAREN,     // )
   PUNCTUATION,     // , .

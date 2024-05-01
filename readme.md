@@ -120,7 +120,7 @@ projection         ::=     colname (',' colname)* ) | *.
 colname            ::=     identifier.
 tablename          ::=     identifier.
 identifier         ::=     "'", name, "'".
-name               ::=     [_azAZ]([_azAZ09])*
+name               ::=     char(char)*.
 
 normal-col-desc    ::=     colname, type
 pk-description     ::=     normal-col-desc, 'PK'

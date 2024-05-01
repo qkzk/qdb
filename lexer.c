@@ -9,7 +9,8 @@ typedef enum Token_kind {
   IDENTIFIER,      // variable name ()
   LITERAL_STRING,  // 'abc' "abc"
   NUMBER,          // 123 0123 0x123
-  OPERATOR,        // = != < > <= >= + - * / %
+  OPERATOR,        // + - * / %
+  COMPARISON,      // = != < > <= >=
   LEFT_PAREN,      // (
   RIGHT_PAREN,     // )
   PUNCTUATION,     // , .
@@ -28,6 +29,8 @@ char* repr_kind(token_kind kind) {
       return "number";
     case OPERATOR:
       return "operator";
+    case COMPARISON:
+      return "comparison";
     case LEFT_PAREN:
       return "left_paren";
     case RIGHT_PAREN:
@@ -126,39 +129,53 @@ bool is_number(char* word, int len) {
   return false;
 }
 
-#define LEN1OPERATORS 8
-const char len_1_operators[LEN1OPERATORS] = "=<>+-*/%";
+#define LEN1COMPARISON 3
+const char len_1_comparison[LEN1COMPARISON] = "=<>";
 
-#define LEN2OPERATORS 4
-const char len_2_operators[LEN2OPERATORS][2] = {"!=", "<=", ">=", "OR"};
+#define LEN2COMPARISON 4
+const char len_2_comparison[LEN2COMPARISON][2] = {"!=", "<=", ">=", "OR"};
 
-const char* len_3_operators = "AND";
+const char* len_3_comparison = "AND";
 
-bool is_operator(char* word, int len) {
+#define LEN1OPERATORS 5
+const char len_1_operators[LEN1OPERATORS] = "+-*/%";
+
+bool is_comparison(char* word, int len) {
   switch (len) {
-    case 1:
-      for (int i = 0; i < LEN1OPERATORS; i++) {
-        if (*word == len_1_operators[i]) {
-          return true;
-        }
-      }
+    case 3:
+      return strncmp(word, len_3_comparison, 3) == 0;
+    default:
       return false;
       break;
     case 2:
-      for (int i = 0; i < LEN2OPERATORS; i++) {
-        if (strncmp(word, len_2_operators[i], 2) == 0) {
+      for (int i = 0; i < LEN2COMPARISON; i++) {
+        if (strncmp(word, len_2_comparison[i], 2) == 0) {
           return true;
         }
       }
       return false;
       break;
-    case 3:
-      return strncmp(word, len_3_operators, 3) == 0;
-    default:
+    case 1:
+      for (int i = 0; i < LEN1OPERATORS; i++) {
+        if (*word == len_1_comparison[i]) {
+          return true;
+        }
+      }
       return false;
       break;
   }
 
+  return false;
+}
+
+bool is_operator(char* word, int len) {
+  if (len == 1) {
+    for (int i = 0; i < LEN1OPERATORS; i++) {
+      if (*word == len_1_operators[i]) {
+        return true;
+      }
+    }
+  }
   return false;
 }
 
@@ -233,6 +250,11 @@ token* get_next_token(char* line, int* position) {
     }
     if (c == '\0' || c == EOF) {
       tok = NULL;
+      break;
+    }
+    if (is_comparison(line + *position, i + 1)) {
+      kind = COMPARISON;
+      tok = new_token(line + *position, i, kind);
       break;
     }
     if (is_keyword(line + *position, i + 1)) {
@@ -331,8 +353,9 @@ void test_comparison_functions(void) {
   assert(is_number("0xff22aa", 8));
   assert(is_number("00", 2));
   assert(is_operator("*", 1));
-  assert(is_operator("<=", 2));
-  assert(!is_operator("<=!", 3));
+  assert(is_comparison("<=", 2));
+  assert(is_comparison("!=", 2));
+  assert(!is_comparison("<=!", 3));
   assert(is_left_paren("(", 1));
   assert(is_right_paren(")", 1));
   assert(!is_left_paren(")", 1));
@@ -348,6 +371,7 @@ int example_lexer(void) {
   line = "insert tablename x = 1, y = 2, z = 3";
   line = "select \"a\", \"b\", \"c\" from \"tablename\" where \"a\"=2";
   line = "drop table 'user'";
+  line = "WHERE ( \"a\" <= 2 )";
   /* line = "aze"; */
 
   token** tokens = (token**)malloc(sizeof(token) * MAXTOKEN);
