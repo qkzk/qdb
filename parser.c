@@ -177,6 +177,14 @@ bool is_token_keyword_create(token* tokens) {
   return is_token_keyword_something(tokens, "CREATE");
 }
 
+bool is_token_keyword_delete(token* tokens) {
+  return is_token_keyword_something(tokens, "DELETE");
+}
+
+bool is_token_keyword_select(token* tokens) {
+  return is_token_keyword_something(tokens, "SELECT");
+}
+
 ast_node* create_node_root(ast_kind kind, char* description) {
   ast_node* node = (ast_node*)malloc(sizeof(ast_node));
   assert(node != NULL);
@@ -865,15 +873,12 @@ ast_node* parse_where(token** tokens, int* nb_tokens) {
       if (comp == NULL) {
         return NULL;
       }
-      printf("comp: value %s\n", comp->value);
       if (comp->nb_tokens > 1) {
-        printf("comparison used %d tokens\n", comp->nb_tokens);
         tokens += (comp->nb_tokens - 1);
       }
       push(comps, comp);
 
     } else if (expect(RIGHT_PAREN, *tokens)) {
-      print_token(*tokens);
       // right parenthesis
       while (!stack_is_empty(comps)) {
         if (peek(comps)->kind == L_PAREN) {
@@ -927,6 +932,92 @@ ast_node* parse_where(token** tokens, int* nb_tokens) {
   return where;
 };
 
+ast_node* parse_delete(token** tokens, int* nb_tokens) {
+  // DELETE FROM tablename
+  // DELETE FROM tablename where condition
+  if (*nb_tokens < 3) {
+    parser_error(
+        "Too few tokens for 'delete from \"tablename\"': expected 3 got %d",
+        *nb_tokens);
+    return NULL;
+  }
+  if (!is_keyword_this(*tokens, "DELETE")) {
+    parser_error("Expected DELETE token");
+    return NULL;
+  }
+  *nb_tokens = *nb_tokens - 1;
+  tokens += 1;
+  if (!is_keyword_this(*tokens, "FROM")) {
+    parser_error("Expected FROM token");
+    return NULL;
+  }
+  tokens += 1;
+  ast_node* root = create_node_root(DELETE, "delete");
+  if (!expect(IDENTIFIER, *tokens)) {
+    parser_error("Expected FROM token");
+    return NULL;
+  }
+  ast_node* table = parse_tablename(tokens, nb_tokens);
+  root->left = table;
+  if (*nb_tokens == 0) {
+    set_leaf(table);
+    return root;
+  } else {
+    *nb_tokens = *nb_tokens - 1;
+    tokens += 1;
+    ast_node* where = parse_where(tokens, nb_tokens);
+    if (where == NULL) {
+      return NULL;
+    }
+    table->left = where;
+    return root;
+  }
+
+  return NULL;
+}
+
+ast_node* parse_select(token** tokens, int* nb_tokens) {
+  // SELECT "a", "b", "c" FROM tablename (WHERE condition)
+  if (*nb_tokens < 3) {
+    parser_error("Too few tokens for 'select clause': expected 3 got %d",
+                 *nb_tokens);
+    return NULL;
+  }
+  if (!is_keyword_this(*tokens, "DELETE")) {
+    parser_error("Expected DELETE token");
+    return NULL;
+  }
+  *nb_tokens = *nb_tokens - 1;
+  tokens += 1;
+  if (!is_keyword_this(*tokens, "FROM")) {
+    parser_error("Expected FROM token");
+    return NULL;
+  }
+  tokens += 1;
+  ast_node* root = create_node_root(DELETE, "delete");
+  if (!expect(IDENTIFIER, *tokens)) {
+    parser_error("Expected FROM token");
+    return NULL;
+  }
+  ast_node* table = parse_tablename(tokens, nb_tokens);
+  root->left = table;
+  if (*nb_tokens == 0) {
+    set_leaf(table);
+    return root;
+  } else {
+    *nb_tokens = *nb_tokens - 1;
+    tokens += 1;
+    ast_node* where = parse_where(tokens, nb_tokens);
+    if (where == NULL) {
+      return NULL;
+    }
+    table->left = where;
+    return root;
+  }
+
+  return NULL;
+}
+
 ast_node* parse_statement(token** tokens, int* nb_tokens) {
   if (is_token_keyword_drop(*tokens)) {
     return parse_drop(tokens, nb_tokens);
@@ -937,9 +1028,11 @@ ast_node* parse_statement(token** tokens, int* nb_tokens) {
   if (is_token_keyword_create(*tokens)) {
     return parse_create(tokens, nb_tokens);
   }
-  // TODO: remove it's not a clause
-  if (is_token_keyword_something(*tokens, "WHERE")) {
-    return parse_where(tokens, nb_tokens);
+  if (is_token_keyword_delete(*tokens)) {
+    return parse_delete(tokens, nb_tokens);
+  }
+  if (is_token_keyword_select(*tokens)) {
+    return parse_select(tokens, nb_tokens);
   }
   parser_error("Couldn't parse statement");
   return NULL;
@@ -981,6 +1074,9 @@ int main(void) {
   input = "WHERE ( ( (\"a\" > 1) OR (\"b\" < 2) ) AND ( (\"c\" > 3) OR (\"d\" = 4) ))";       // OKAY success
   input = "WHERE ( ( (\"a\" <= 1) OR (\"b\" >= 2) ) AND ( (\"c\" != 3) OR (\"d\" == 4) ))";   // OKAY failure (== isn't a valid token)
   input = "WHERE ( ( (\"a\" <= 1) OR (\"b\" >= 2) ) AND ( (\"c\" != 3) OR (\"d\" = 4) ))";    // OKAY success
+  // delete from table 
+  input = "DELETE FROM \"user\"";                                                             // OKAY success
+  input = "DELETE FROM \"user\" WHERE ( \"a\" = 2 )";                                         // OKAY success
   // clang-format on
 
   token** tokens = (token**)malloc(sizeof(token) * MAXTOKEN);
