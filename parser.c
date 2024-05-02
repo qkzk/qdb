@@ -806,6 +806,8 @@ ast_node* parse_where(token** tokens, int* nb_tokens) {
   /*
   https://gist.github.com/tomdaley92/507c3a99c56b779144d9c79c0a3900be
   */
+  printf("where statement. nb_tokens: %d\n", *nb_tokens);
+  print_token(*tokens);
   ast_node* where = create_node_root(CONDITION, "where");
   if (where == NULL) {
     parser_error("Couldn't create where node");
@@ -983,26 +985,57 @@ ast_node* parse_select(token** tokens, int* nb_tokens) {
                  *nb_tokens);
     return NULL;
   }
-  if (!is_keyword_this(*tokens, "DELETE")) {
+  if (!is_keyword_this(*tokens, "SELECT")) {
     parser_error("Expected DELETE token");
     return NULL;
   }
-  *nb_tokens = *nb_tokens - 1;
+  ast_node* root = create_node_root(SELECT, "select");
+  if (root == NULL) {
+    parser_error("Couldn't create select node");
+    return NULL;
+  }
+  root->nb_tokens = 1;
+  *nb_tokens -= 1;
   tokens += 1;
-  if (!is_keyword_this(*tokens, "FROM")) {
-    parser_error("Expected FROM token");
+
+  ast_node* tablename_left = create_node_root(TABLENAME, "TODO");
+  tablename_left->nb_tokens = 0;
+
+  // TODO: prepare a node for tablename, attach to
+  root->left = tablename_left;
+  ast_node* current = tablename_left;
+  ast_node* next;
+  // while identifier loop
+  while (true) {
+    next = parse_colname(tokens, nb_tokens);
+    current->left = next;
+    current = next;
+    tokens += 1;
+    if (is_token_punctuation(*tokens, ",")) {
+      *nb_tokens -= 1;
+      tokens += 1;
+    } else {
+      break;
+    }
+  }
+  if (!is_token_keyword_something(*tokens, "FROM")) {
+    parser_error("Expected FROM keyword");
     return NULL;
   }
   tokens += 1;
-  ast_node* root = create_node_root(DELETE, "delete");
+  // FROM tablename
   if (!expect(IDENTIFIER, *tokens)) {
     parser_error("Expected FROM token");
     return NULL;
   }
-  ast_node* table = parse_tablename(tokens, nb_tokens);
-  root->left = table;
+  ast_node* tablename_right = parse_tablename(tokens, nb_tokens);
+  root->right = tablename_right;
+  tablename_left->value =
+      (char*)malloc(sizeof(char) * strlen(tablename_right->value));
+  strncpy(tablename_left->value, tablename_right->value,
+          strlen(tablename_right->value));
   if (*nb_tokens == 0) {
-    set_leaf(table);
+    set_leaf(tablename_right);
     return root;
   } else {
     *nb_tokens = *nb_tokens - 1;
@@ -1011,7 +1044,7 @@ ast_node* parse_select(token** tokens, int* nb_tokens) {
     if (where == NULL) {
       return NULL;
     }
-    table->left = where;
+    tablename_right->left = where;
     return root;
   }
 
@@ -1077,6 +1110,12 @@ int main(void) {
   // delete from table 
   input = "DELETE FROM \"user\"";                                                             // OKAY success
   input = "DELETE FROM \"user\" WHERE ( \"a\" = 2 )";                                         // OKAY success
+  // select 
+  input = "SELECT \"a\" FROM \"users\"";                                                                              // OKAY success 
+  input = "SELECT \"a\" FROM \"users\" WHERE ( \"a\" = 2 )";                                                          // OKAY success 
+  input = "SELECT \"a\" FROM \"users\" WHERE ( (\"a\" <= 1) OR (\"b\" >= 2) ) AND ( (\"c\" != 3) OR (\"d\" = 4) ))";  // FAIL
+  input = "SELECT \"a\" FROM \"users\" WHERE ( ( (\"a\" > 1) OR (\"b\" < 2) ) AND ( (\"c\" > 3) OR (\"d\" = 4) ))";   // OKAY success 
+  input = "SELECT \"a\", \"b\"  FROM \"users\"";                                                                      // FAIL
   // clang-format on
 
   token** tokens = (token**)malloc(sizeof(token) * MAXTOKEN);
