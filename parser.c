@@ -706,8 +706,8 @@ typedef struct StackNode {
 
 void push(stack_node* stack, ast_node* node) {
   if (stack->sp + 1 >= MAXSTACK) {
-    parser_error("output stack is full");
-    exit(1);
+    parser_error("stack is full");
+    return;
   }
   stack->nodes[stack->sp++] = node;
 }
@@ -723,7 +723,7 @@ bool stack_is_full(stack_node* stack) {
 ast_node* pop(stack_node* stack) {
   if (stack->sp <= 0) {
     parser_error("Cannot pop from empty stack");
-    exit(2);
+    return NULL;
   }
   return stack->nodes[--(stack->sp)];
 }
@@ -777,8 +777,13 @@ ast_node* create_comparison(token** tokens, int* nb_tokens) {
     parser_error("Couldn't create COMP node");
     return NULL;
   }
+  comp->nb_tokens = 1;
   // if the next token is a comparison...
-  if (expect(COMPARISON, *(tokens + 1))) {
+  if (*nb_tokens > 1 && expect(COMPARISON, *(tokens + 1))) {
+    if (comp->value[0] == (*(tokens + 1))->value[0]) {
+      parser_error("Cannot merge 2 identical comparisons.");
+      return NULL;
+    }
     printf("next is a comparison \n");
     comp->value = (char*)realloc(comp->value, sizeof(char) * 3);
     printf("realloc okay\n");
@@ -798,6 +803,7 @@ ast_node* parse_where(token** tokens, int* nb_tokens) {
     parser_error("Couldn't create where node");
     return NULL;
   }
+  where->nb_tokens = 1;
   tokens += 1;
   *nb_tokens -= 1;
 
@@ -840,8 +846,17 @@ ast_node* parse_where(token** tokens, int* nb_tokens) {
           break;
         }
         ast_node* comp = pop(comps);
+        if (comp == NULL) {
+          return NULL;
+        }
         ast_node* right = pop(output);
+        if (right == NULL) {
+          return NULL;
+        }
         ast_node* left = pop(output);
+        if (left == NULL) {
+          return NULL;
+        }
         comp->left = left;
         comp->right = right;
         push(output, comp);
@@ -852,6 +867,7 @@ ast_node* parse_where(token** tokens, int* nb_tokens) {
       }
       printf("comp: value %s\n", comp->value);
       if (comp->nb_tokens > 1) {
+        printf("comparison used %d tokens\n", comp->nb_tokens);
         tokens += (comp->nb_tokens - 1);
       }
       push(comps, comp);
@@ -864,13 +880,25 @@ ast_node* parse_where(token** tokens, int* nb_tokens) {
           break;
         }
         ast_node* comp = pop(comps);
+        if (comp == NULL) {
+          return NULL;
+        }
         ast_node* right = pop(output);
+        if (right == NULL) {
+          return NULL;
+        }
         ast_node* left = pop(output);
+        if (left == NULL) {
+          return NULL;
+        }
         comp->left = left;
         comp->right = right;
         push(output, comp);
       }
       ast_node* lparen = pop(comps);
+      if (lparen == NULL) {
+        return NULL;
+      }
       if (lparen->kind != L_PAREN) {
         parser_error("Expected a ( from stack, got %s", lparen->value);
         return NULL;
@@ -887,6 +915,9 @@ ast_node* parse_where(token** tokens, int* nb_tokens) {
   }
 
   ast_node* left = pop(output);
+  if (left == NULL) {
+    return NULL;
+  }
   where->left = left;
   if (!stack_is_empty(output)) {
     parser_error("Output stack should be empty");
@@ -941,13 +972,15 @@ int main(void) {
   input = "CREATE TABLE \"user\" (\"a\" int pk )";                                            // OKAY success
   input = "CREATE TABLE \"user\" (\"a\" int pk, \"b\" float, \"c\" varchar ( 32 ) )";         // OKAY success
   input = "CREATE TABLE \"user\" (\"a\" varchar(32) pk, \"b\" float, \"c\" varchar ( 32 ) )"; // OKAY success
-  // complex condition statement
-  input = "WHERE (\"a\" >= 3) OR (\"b\" < 3)";
   // comparison statement
-  input = "WHERE ( \"a\" = 2 )";                                                              // OKAY success
-  input = "WHERE ( (\"a\" > 1) OR (\"b\" < 2) ) AND (  (\"c\" = 3) OR (\"d\" > 4) )";         // OKAY failure (wrong parenthesis)
   input = "WHERE ( \"a\" >= 3 )";                                                             // OKAY success
-  input = "WHERE ( ( (\"a\" >= 1) OR (\"b\" != 2) ) AND ( (\"c\" >= 3) OR (\"d\" = 4) ))";       // FAIL
+  input = "WHERE ( \"a\" = 2 )";                                                              // OKAY success
+  // complex condition statement
+  input = "WHERE ( (\"a\" > 1) OR (\"b\" < 2) ) AND (  (\"c\" = 3) OR (\"d\" > 4) )";         // OKAY failure (wrong parenthesis)
+  input = "WHERE (\"a\" >= 3) OR (\"b\" < 3)";                                                // OKAY failure (wrong parenthesis)
+  input = "WHERE ( ( (\"a\" > 1) OR (\"b\" < 2) ) AND ( (\"c\" > 3) OR (\"d\" = 4) ))";       // OKAY success
+  input = "WHERE ( ( (\"a\" <= 1) OR (\"b\" >= 2) ) AND ( (\"c\" != 3) OR (\"d\" == 4) ))";   // OKAY failure (== isn't a valid token)
+  input = "WHERE ( ( (\"a\" <= 1) OR (\"b\" >= 2) ) AND ( (\"c\" != 3) OR (\"d\" = 4) ))";    // OKAY success
   // clang-format on
 
   token** tokens = (token**)malloc(sizeof(token) * MAXTOKEN);
