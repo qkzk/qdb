@@ -42,6 +42,7 @@ typedef enum Ast_kind {
   DELETE,     // delete
   CREATE,     // create table
   DROP,       // drop table
+  SET,        // set...
   PROJECTION, // *      "a", "b"
   TABLENAME,  // "users"
   COLNAME,    // "name"
@@ -64,6 +65,7 @@ const char *ast_kind_names[] = {
     [DELETE] = "DELETE",
     [CREATE] = "CREATE",
     [DROP] = "DROP",
+    [SET] = "SET",
     [PROJECTION] = "PROJECTION",
     [TABLENAME] = "TABLENAME",
     [COLNAME] = "COLNAME",
@@ -183,6 +185,10 @@ bool is_token_keyword_delete(token *tokens) {
 
 bool is_token_keyword_select(token *tokens) {
   return is_token_keyword_something(tokens, "SELECT");
+}
+
+bool is_token_keyword_update(token *tokens) {
+  return is_token_keyword_something(tokens, "UPDATE");
 }
 
 ast_node *create_node_root(ast_kind kind, char *description) {
@@ -993,7 +999,6 @@ ast_node *parse_select(token **tokens, int *nb_tokens) {
   ast_node *tablename_left = create_node_root(TABLENAME, "TODO");
   tablename_left->nb_tokens = 0;
 
-  // TODO: prepare a node for tablename, attach to
   root->left = tablename_left;
   ast_node *current = tablename_left;
   ast_node *next;
@@ -1045,6 +1050,112 @@ ast_node *parse_select(token **tokens, int *nb_tokens) {
   return NULL;
 }
 
+ast_node *parse_update(token **tokens, int *nb_tokens) {
+  if (*nb_tokens < 3) {
+    parser_error("Too few tokens for 'update clause': expected 3 got %d",
+                 *nb_tokens);
+    return NULL;
+  }
+  if (!is_keyword_this(*tokens, "UPDATE")) {
+    parser_error("Expected UPDATE token");
+    return NULL;
+  }
+  ast_node *root = create_node_root(UPDATE, "udpate");
+  if (root == NULL) {
+    parser_error("Couldn't create update node");
+    return NULL;
+  }
+  root->nb_tokens = 1;
+  *nb_tokens -= 1;
+  tokens += 1;
+
+  // tablename
+  if (!expect(IDENTIFIER, *tokens)) {
+    parser_error("Expected tablename token");
+    return NULL;
+  }
+  ast_node *tablename_left = parse_tablename(tokens, nb_tokens);
+  root->left = tablename_left;
+
+  if (!expect(IDENTIFIER, *tokens)) {
+    parser_error("Expected FROM token");
+    return NULL;
+  }
+  ast_node *tablename_right = parse_tablename(tokens, nb_tokens);
+  root->right = tablename_right;
+
+  *nb_tokens += 1;
+  tokens += 1;
+
+  // set
+  ast_node *set = create_node_root(SET, "set");
+  if (set == NULL) {
+    parser_error("Couldn't create set node");
+    return NULL;
+  }
+  set->nb_tokens = 1;
+  tokens += 1;
+  *nb_tokens -= 1;
+  tablename_left->left = set;
+
+  print_ast(root);
+  printf("%d tokens left\n", *nb_tokens);
+  ast_node *current = set;
+  /* ast_node *next; */
+  // while colname identifier loop
+  while (true) {
+    print_token(*tokens);
+    ast_node *next = parse_colname(tokens, nb_tokens);
+    if (next == NULL) {
+      parser_error("Couldn't parse colname");
+      return NULL;
+    }
+    tokens += 1;
+    print_token(*tokens);
+    if (!is_token_comparison(*tokens) || (*tokens)->value[0] != '=' ||
+        (*tokens)->len != 1) {
+      parser_error("Expected =");
+      print_token(*tokens);
+      return NULL;
+    }
+    *nb_tokens -= 1;
+    tokens += 1;
+    print_token(*tokens);
+    ast_node *value = parse_literal(tokens, nb_tokens);
+    if (value == NULL) {
+      parser_error("Expected a literal");
+      return NULL;
+    }
+    next->right = value;
+    print_ast(next);
+    tokens += value->nb_tokens;
+    print_token(*tokens);
+    printf("%d tokens left\n", *nb_tokens);
+
+    current->left = next;
+    current = next;
+    if (*tokens == NULL || !is_token_punctuation(*tokens, ",")) {
+      break;
+    }
+    tokens += 1;
+    *nb_tokens -= 1;
+  }
+  print_ast(root);
+  print_token(*tokens);
+  if (*nb_tokens <= 1) {
+    return root;
+  } else {
+    ast_node *where = parse_where(tokens, nb_tokens);
+    if (where == NULL) {
+      return NULL;
+    }
+    tablename_right->left = where;
+    return root;
+  }
+
+  return NULL;
+}
+
 ast_node *parse_statement(token **tokens, int *nb_tokens) {
   if (is_token_keyword_drop(*tokens)) {
     return parse_drop(tokens, nb_tokens);
@@ -1060,6 +1171,9 @@ ast_node *parse_statement(token **tokens, int *nb_tokens) {
   }
   if (is_token_keyword_select(*tokens)) {
     return parse_select(tokens, nb_tokens);
+  }
+  if (is_token_keyword_update(*tokens)) {
+    return parse_update(tokens, nb_tokens);
   }
   parser_error("Couldn't parse statement");
   return NULL;
@@ -1111,6 +1225,12 @@ int main(void) {
   input = "SELECT \"a\" FROM \"users\" WHERE ( ( (\"a\" > 1) OR (\"b\" < 2) ) AND ( (\"c\" > 3) OR (\"d\" = 4) ))";                   // OKAY success
   input = "SELECT \"a\" FROM \"users\" WHERE ( ( (\"a\" <= 1) OR (\"b\" >= 2) ) AND ( (\"c\" != 3) OR (\"d\" = 4) ))";                // OKAY success
   input = "SELECT \"a\", \"b\", \"c\" FROM \"users\" WHERE ( ( (\"a\" <= 1) OR (\"b\" >= 2) ) AND ( (\"c\" != 3) OR (\"d\" = 4) ))";  // OKAY success
+  // update 
+  input = "UPDATE \"users\" set \"a\" = 1";                                                                                           // OKAY success
+  input = "UPDATE \"users\" set \"a\" = 1, \"b\" = 'abc', \"c\" = 2.3";                                                               // OKAY success
+  input = "UPDATE \"users\" set \"a\" = 1 WHERE ( \"a\" = 2 )";                                                                       // OKAY success
+  input = "UPDATE \"users\" set \"a\" = 1, \"b\" = 'abc', \"c\" = 2.3 WHERE ( \"a\" = 2 )";                                           // OKAY success
+  input = "UPDATE \"users\" set \"a\" = 1 WHERE ( ( (\"a\" <= 1) OR (\"b\" >= 2) ) AND ( (\"c\" != 3) OR (\"d\" = 4) ) )";            // OKAY success
   // clang-format on
 
   token **tokens = (token **)malloc(sizeof(token) * MAXTOKEN);
