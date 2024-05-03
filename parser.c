@@ -1113,8 +1113,8 @@ int main(void) {
   // select 
   input = "SELECT \"a\" FROM \"users\"";                                                                              // OKAY success 
   input = "SELECT \"a\" FROM \"users\" WHERE ( \"a\" = 2 )";                                                          // OKAY success 
-  input = "SELECT \"a\" FROM \"users\" WHERE ( (\"a\" <= 1) OR (\"b\" >= 2) ) AND ( (\"c\" != 3) OR (\"d\" = 4) ))";  // FAIL
   input = "SELECT \"a\" FROM \"users\" WHERE ( ( (\"a\" > 1) OR (\"b\" < 2) ) AND ( (\"c\" > 3) OR (\"d\" = 4) ))";   // OKAY success 
+  input = "SELECT \"a\" FROM \"users\" WHERE ( (\"a\" <= 1) OR (\"b\" >= 2) ) AND ( (\"c\" != 3) OR (\"d\" = 4) ))";  // FAIL
   input = "SELECT \"a\", \"b\"  FROM \"users\"";                                                                      // FAIL
   // clang-format on
 
