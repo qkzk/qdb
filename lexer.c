@@ -47,23 +47,23 @@ char* repr_kind(token_kind kind) {
 #define NBKEYWORDS 34
 // clang-format off
 const char *skeywords[NBKEYWORDS] = {
-  "drop",     "DROP",
-  "from",     "FROM",
-  "select",   "SELECT",
+  "and",      "AND",
   "create",   "CREATE",
+  "delete",   "DELETE",
+  "drop",     "DROP",
   "float",    "FLOAT",
+  "from",     "FROM",
   "insert",   "INSERT",
   "int",      "INT",
   "into",     "INTO",
+  "or",       "OR",
+  "pk",       "PK",
+  "select",   "SELECT",
   "set",      "SET",
   "table",    "TABLE",
   "update",   "UPDATE",
-  "where",    "WHERE",
-  "delete",   "DELETE",
-  "pk",       "PK",
   "varchar",  "VARCHAR",
-  "or",       "OR",
-  "and",      "AND",
+  "where",    "WHERE",
 };
 // clang-format on
 
@@ -237,7 +237,7 @@ void print_token(token* tok) {
          tok->len);
 }
 
-token* get_next_token(char* line, int* position) {
+token* get_next_token(char* line, int* position, int line_len) {
   int i = 0;
   char c;
   token_kind kind;
@@ -258,9 +258,12 @@ token* get_next_token(char* line, int* position) {
       break;
     }
     if (is_keyword(line + *position, i + 1)) {
-      kind = KEYWORD;
-      tok = new_token(line + *position, i, kind);
-      break;
+      if (*position + i + 1 >= line_len ||
+          !is_keyword(line + *position, i + 2)) {
+        kind = KEYWORD;
+        tok = new_token(line + *position, i, kind);
+        break;
+      }
     }
     if (is_identifier(line + *position, i + 1)) {
       kind = IDENTIFIER;
@@ -320,7 +323,7 @@ int lexer(char* line, token** tokens) {
   int line_len = strlen(line);
   int nb_tokens = 0;
   while (position < line_len) {
-    token* tok = get_next_token(line, &position);
+    token* tok = get_next_token(line, &position, line_len);
     if (tok == NULL) {
       syntax_error(line, position);
     }
@@ -330,13 +333,15 @@ int lexer(char* line, token** tokens) {
 }
 
 void destroy_tokens(token** tokens) {
-  for (int i = 0; i < MAXTOKEN; i++) {
-    if (tokens[i] == NULL) {
-      break;
-    }
-    free(tokens[i]->value);
-    free(tokens[i]);
-  }
+  /* for (int i = 0; i < MAXTOKEN; i++) { */
+  /*   if (tokens[i] == NULL) { */
+  /*     break; */
+  /*   } */
+  /*   if (tokens[i]->value != NULL) { */
+  /*     free(tokens[i]->value); */
+  /*   } */
+  /*   free(tokens[i]); */
+  /* } */
   free(tokens);
 }
 
@@ -372,6 +377,7 @@ int example_lexer(void) {
   line = "select \"a\", \"b\", \"c\" from \"tablename\" where \"a\"=2";
   line = "drop table 'user'";
   line = "WHERE ( \"a\" <= 2 )";
+  line = "into";
   /* line = "aze"; */
 
   token** tokens = (token**)malloc(sizeof(token) * MAXTOKEN);
