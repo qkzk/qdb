@@ -1,5 +1,5 @@
-#ifndef __PARSER_H__
-#define __PARSER_H__
+#ifndef _PARSER_H__
+#define _PARSER_H__
 
 #include "lexer.h"
 
@@ -27,15 +27,15 @@ typedef enum Ast_kind {
 } ast_kind;
 typedef struct ASTNode {
   ast_kind kind;
-  int nb_tokens;
+  size_t nb_tokens;
   char* value;
   long i_value;
   double f_value;
   struct ASTNode* left;
   struct ASTNode* right;
 } ast_node;
-ast_node *parse_statement(token **tokens, int *nb_tokens);
+ast_node *parse_statement(token **tokens, size_t *nb_tokens);
 void print_ast(ast_node* root);
 void destroy_ast(ast_node *node);
 
-#endif // __PARSER_H__
+#endif // _PARSER_H__

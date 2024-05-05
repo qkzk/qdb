@@ -1,5 +1,6 @@
 #ifndef _LEXER__
 #define _LEXER__
+#include <stdio.h>
 
 typedef enum Token_kind {
   KEYWORD,         // select insert update, create drop, into set where
@@ -16,14 +17,14 @@ typedef enum Token_kind {
 
 typedef struct Token {
   char* value;
-  int len;
+  size_t len;
   token_kind kind;
 } token;
 
 #define MAXTOKEN 1000
 char* repr_kind(token_kind kind) ;
-void syntax_error(char* line, int position);
-int lexer(char* line, token** tokens) ;
+void syntax_error(char* line, size_t position);
+size_t lexer(char* line, token** tokens) ;
 void print_token(token* tok);
 void destroy_tokens(token** tokens);
 int example_lexer(void);

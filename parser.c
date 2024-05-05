@@ -23,7 +23,7 @@ void parser_error(const char* format, ...) {
   }
 
   // Use vsnprintf for safe formatting into dynamically allocated buffer
-  int bytes_written = vsnprintf(formatted_string, buffer_size, format, args);
+  vsnprintf(formatted_string, buffer_size, format, args);
 
   // Check for potential truncation (if bytes_written >= buffer_size)
   // You might need to reallocate a larger buffer and retry if necessary
@@ -87,7 +87,7 @@ void print_ask_kind(ast_kind kind) {
 
 typedef struct ASTNode {
   ast_kind kind;
-  int nb_tokens;
+  size_t nb_tokens;
   char* value;
   long i_value;
   double f_value;
@@ -106,7 +106,7 @@ bool is_leaf(ast_node* node) {
 
 void print_node(ast_node* node) {
   print_ask_kind(node->kind);
-  printf("value (%s) - nb tokens (%d)\n", node->value, node->nb_tokens);
+  printf("value (%s) - nb tokens (%lu)\n", node->value, node->nb_tokens);
 }
 
 void print_ast_rec(ast_node* node, int indent) {
@@ -132,27 +132,27 @@ void print_ast(ast_node* root) {
   printf("\n=== AST END  ===\n\n");
 }
 
-ast_node* parse_statement(token** tokens, int* nb_tokens);
-ast_node* parse_drop(token** tokens, int* nb_tokens);
-ast_node* parse_insert(token** tokens, int* nb_tokens);
-ast_node* parse_tablename(token** tokens, int* nb_tokens);
-ast_node* parse_literal(token** tokens, int* nb_tokens);
-ast_node* parse_literal_string(token** tokens, int* nb_tokens);
-ast_node* parse_literal_postive_integer(token** tokens, int* nb_tokens);
-ast_node* parse_literal_negative_integer(token** tokens, int* nb_tokens);
-ast_node* parse_literal_positive_float(token** tokens, int* nb_tokens);
-ast_node* parse_literal_negative_integer(token** tokens, int* nb_tokens);
+ast_node* parse_statement(token** tokens, size_t* nb_tokens);
+ast_node* parse_drop(token** tokens, size_t* nb_tokens);
+ast_node* parse_insert(token** tokens, size_t* nb_tokens);
+ast_node* parse_tablename(token** tokens, size_t* nb_tokens);
+ast_node* parse_literal(token** tokens, size_t* nb_tokens);
+ast_node* parse_literal_string(token** tokens, size_t* nb_tokens);
+ast_node* parse_literal_postive_integer(token** tokens, size_t* nb_tokens);
+ast_node* parse_literal_negative_integer(token** tokens, size_t* nb_tokens);
+ast_node* parse_literal_positive_float(token** tokens, size_t* nb_tokens);
+ast_node* parse_literal_negative_integer(token** tokens, size_t* nb_tokens);
 
-/* ast_node* parse_select(token* tokens, int* nb_tokens); */
-/* ast_node* parse_update(token* tokens, int* nb_tokens); */
-/* ast_node* parse_delete(token* tokens, int* nb_tokens); */
-/* ast_node* parse_create(token* tokens, int* nb_tokens); */
-/* ast_node* parse_projection(token* tokens, int* nb_tokens); */
-/* ast_node* parse_colname(token* tokens, int* nb_tokens); */
-/* ast_node* parse_condition(token* tokens, int* nb_tokens); */
-/* ast_node* parse_rel(token* tokens, int* nb_tokens); */
-/* ast_node* parse_comp(token* tokens, int* nb_tokens); */
-/* ast_node* parse_type(token* tokens, int* nb_tokens); */
+/* ast_node* parse_select(token* tokens, size_t* nb_tokens); */
+/* ast_node* parse_update(token* tokens, size_t* nb_tokens); */
+/* ast_node* parse_delete(token* tokens, size_t* nb_tokens); */
+/* ast_node* parse_create(token* tokens, size_t* nb_tokens); */
+/* ast_node* parse_projection(token* tokens, size_t* nb_tokens); */
+/* ast_node* parse_colname(token* tokens, size_t* nb_tokens); */
+/* ast_node* parse_condition(token* tokens, size_t* nb_tokens); */
+/* ast_node* parse_rel(token* tokens, size_t* nb_tokens); */
+/* ast_node* parse_comp(token* tokens, size_t* nb_tokens); */
+/* ast_node* parse_type(token* tokens, size_t* nb_tokens); */
 
 // true iff read has same kind as current
 bool expect(token_kind expected, token* current) {
@@ -216,20 +216,21 @@ ast_node* create_node_create(void) {
   return create_node_root(CREATE, "create_table");
 }
 
-ast_node* parse_identifier(token** tokens, int* nb_tokens) {
+ast_node* parse_identifier(token** tokens, size_t* nb_tokens) {
   ast_node* node = (ast_node*)malloc(sizeof(ast_node));
   assert(node != NULL);
   node->kind = TABLENAME;
   node->nb_tokens = 1;
-  char* value = (char*)malloc(sizeof(char) * (*tokens)->len);
-  assert(value != NULL);
-  node->value = value;
-  strncpy(node->value, (*tokens)->value, (*tokens)->len);
+  size_t len = (*tokens)->len;
+  node->value = (char*)malloc(sizeof(char) * (len + 1));
+  assert(node->value != NULL);
+  strncpy(node->value, (*tokens)->value, len + 1);
+  node->value[len] = '\0';
   *nb_tokens = *nb_tokens - 1;
   return node;
 }
 
-ast_node* parse_tablename(token** tokens, int* nb_tokens) {
+ast_node* parse_tablename(token** tokens, size_t* nb_tokens) {
   return parse_identifier(tokens, nb_tokens);
 }
 
@@ -243,19 +244,20 @@ bool is_token_operator(token* tok, char* value) {
          strncmp(tok->value, value, strlen(value)) == 0;
 }
 
-ast_node* parse_literal_string(token** tokens, int* nb_tokens) {
+ast_node* parse_literal_string(token** tokens, size_t* nb_tokens) {
   ast_node* node = (ast_node*)malloc(sizeof(ast_node));
   assert(node != NULL);
   node->kind = STRING;
   node->nb_tokens = 1;
-  char* value = (char*)malloc(sizeof(char) * strlen((*tokens)->value));
-  strcpy(value, (*tokens)->value);
+  size_t len = (*tokens)->len;
+  char* value = (char*)malloc(sizeof(char) * len);
+  strncpy(value, (*tokens)->value, len);
   node->value = value;
   *nb_tokens -= 1;
   return node;
 }
 
-ast_node* parse_literal_negative_integer(token** tokens, int* nb_tokens) {
+ast_node* parse_literal_negative_integer(token** tokens, size_t* nb_tokens) {
   ast_node* node = (ast_node*)malloc(sizeof(ast_node));
   assert(node != NULL);
   node->kind = INT;
@@ -270,7 +272,7 @@ ast_node* parse_literal_negative_integer(token** tokens, int* nb_tokens) {
   return node;
 }
 
-ast_node* parse_literal_postive_integer(token** tokens, int* nb_tokens) {
+ast_node* parse_literal_postive_integer(token** tokens, size_t* nb_tokens) {
   ast_node* node = (ast_node*)malloc(sizeof(ast_node));
   assert(node != NULL);
   node->kind = INT;
@@ -283,7 +285,7 @@ ast_node* parse_literal_postive_integer(token** tokens, int* nb_tokens) {
   return node;
 }
 
-ast_node* parse_literal_positive_float(token** tokens, int* nb_tokens) {
+ast_node* parse_literal_positive_float(token** tokens, size_t* nb_tokens) {
   token* left = *tokens;
   token* right = *(tokens + 2);
   unsigned long len_left = strlen(left->value);
@@ -299,11 +301,12 @@ ast_node* parse_literal_positive_float(token** tokens, int* nb_tokens) {
   strcat(value, right->value);
   node->value = value;
   node->f_value = atof(value);
+  printf("value: char %s float %f\n", node->value, node->f_value);
   *nb_tokens -= 3;
   return node;
 }
 
-ast_node* parse_literal_negative_float(token** tokens, int* nb_tokens) {
+ast_node* parse_literal_negative_float(token** tokens, size_t* nb_tokens) {
   token* left = *(tokens + 1);
   token* right = *(tokens + 3);
   unsigned long len_left = strlen(left->value);
@@ -320,12 +323,13 @@ ast_node* parse_literal_negative_float(token** tokens, int* nb_tokens) {
   strcat(value, right->value);
   node->value = value;
   node->f_value = atof(value);
+  printf("value: char %s float %f\n", node->value, node->f_value);
   *nb_tokens -= 4;
   return node;
 }
 
 // string | int | float
-ast_node* parse_literal(token** tokens, int* nb_tokens) {
+ast_node* parse_literal(token** tokens, size_t* nb_tokens) {
   if ((*tokens)->kind == LITERAL_STRING) {
     // string - consumes 1 token
     return parse_literal_string(tokens, nb_tokens);
@@ -357,7 +361,7 @@ ast_node* parse_literal(token** tokens, int* nb_tokens) {
   return NULL;
 }
 
-ast_node* parse_drop(token** tokens, int* nb_tokens) {
+ast_node* parse_drop(token** tokens, size_t* nb_tokens) {
   if (*nb_tokens != 3) {
     parser_error(
         "Wrong number of tokens for 'drop table \"tablename\"': expected 3 got "
@@ -387,7 +391,7 @@ ast_node* parse_drop(token** tokens, int* nb_tokens) {
   return NULL;
 }
 
-ast_node* parse_insert(token** tokens, int* nb_tokens) {
+ast_node* parse_insert(token** tokens, size_t* nb_tokens) {
   if (expect(KEYWORD, *tokens) && is_keyword_this(*tokens, "INSERT") &&
       expect(KEYWORD, *(tokens + 1)) &&
       is_keyword_this(*(tokens + 1), "INTO")) {
@@ -445,7 +449,7 @@ ast_node* parse_insert(token** tokens, int* nb_tokens) {
   return NULL;
 }
 
-ast_node* parse_colname(token** tokens, int* nb_tokens) {
+ast_node* parse_colname(token** tokens, size_t* nb_tokens) {
   ast_node* col = parse_identifier(tokens, nb_tokens);
   if (col == NULL) {
     parser_error("Couldn't parse the colname.");
@@ -455,7 +459,7 @@ ast_node* parse_colname(token** tokens, int* nb_tokens) {
   return col;
 }
 
-ast_node* parse_type(token** tokens, int* nb_tokens) {
+ast_node* parse_type(token** tokens, size_t* nb_tokens) {
   // type ::= 'varchar', '(', int, ')' | 'int' | 'float'.
   if (is_keyword_this(*tokens, "int")) {
     ast_node* node = create_node_root(TYPE, "int");
@@ -500,7 +504,7 @@ ast_node* parse_type(token** tokens, int* nb_tokens) {
   }
 }
 
-ast_node* parse_int_float(token** tokens, int* nb_tokens) {
+ast_node* parse_int_float(token** tokens, size_t* nb_tokens) {
   // consumes 1 token
   ast_node* type = create_node_root(TYPE, (*tokens)->value);
   if (type == NULL) {
@@ -513,13 +517,12 @@ ast_node* parse_int_float(token** tokens, int* nb_tokens) {
   return type;
 }
 
-ast_node* parse_varchar(token** tokens, int* nb_tokens) {
+ast_node* parse_varchar(token** tokens, size_t* nb_tokens) {
   // consumes 4 tokens
 
   // 7 tokens will be used
   // varchar
   ast_node* next;
-  ast_node* current;
   ast_node* type = create_node_root(TYPE, (*tokens)->value);
   if (type == NULL) {
     parser_error("Couldn't parse the type");
@@ -553,7 +556,7 @@ ast_node* parse_varchar(token** tokens, int* nb_tokens) {
   return type;
 }
 
-ast_node* parse_primary_column(token** tokens, int* nb_tokens) {
+ast_node* parse_primary_column(token** tokens, size_t* nb_tokens) {
   ast_node* col = create_node_root(COLNAME_PK, (*tokens)->value);
   if (col == NULL) {
     parser_error(
@@ -570,8 +573,7 @@ ast_node* parse_primary_column(token** tokens, int* nb_tokens) {
   return col;
 }
 
-ast_node* parse_create(token** tokens, int* nb_tokens) {
-  int received_tokens = *nb_tokens;
+ast_node* parse_create(token** tokens, size_t* nb_tokens) {
   if (!is_token_keyword_create(*tokens) ||
       !is_keyword_this(*(tokens + 1), "TABLE")) {
     parser_error("Expected CREATE TABLE.");
@@ -762,7 +764,7 @@ bool is_token_where_leaf(token* tok) {
          expect(LITERAL_STRING, tok);
 }
 
-ast_node* create_where_leaf(token** tokens, int* nb_tokens) {
+ast_node* create_where_leaf(token** tokens, size_t* nb_tokens) {
   ast_node* leaf;
   switch ((*tokens)->kind) {
     case IDENTIFIER:
@@ -787,7 +789,7 @@ ast_node* create_left_paren(void) {
   return create_node_root(L_PAREN, "(");
 }
 
-ast_node* create_comparison(token** tokens, int* nb_tokens) {
+ast_node* create_comparison(token** tokens, size_t* nb_tokens) {
   /* comparison can use 1 or 2 tokens */
   ast_node* comp = create_node_root(COMP, (*tokens)->value);
   if (comp == NULL) {
@@ -809,7 +811,7 @@ ast_node* create_comparison(token** tokens, int* nb_tokens) {
   return comp;
 }
 
-ast_node* parse_where(token** tokens, int* nb_tokens) {
+ast_node* parse_where(token** tokens, size_t* nb_tokens) {
   /*
   https://gist.github.com/tomdaley92/507c3a99c56b779144d9c79c0a3900be
   */
@@ -938,9 +940,9 @@ ast_node* parse_where(token** tokens, int* nb_tokens) {
     return NULL;
   }
   return where;
-};
+}
 
-ast_node* parse_delete(token** tokens, int* nb_tokens) {
+ast_node* parse_delete(token** tokens, size_t* nb_tokens) {
   // DELETE FROM tablename
   // DELETE FROM tablename where condition
   if (*nb_tokens < 3) {
@@ -984,7 +986,7 @@ ast_node* parse_delete(token** tokens, int* nb_tokens) {
   return NULL;
 }
 
-ast_node* parse_select(token** tokens, int* nb_tokens) {
+ast_node* parse_select(token** tokens, size_t* nb_tokens) {
   // SELECT "a", "b", "c" FROM tablename (WHERE condition)
   if (*nb_tokens < 3) {
     parser_error("Too few tokens for 'select clause': expected 3 got %d",
@@ -1039,7 +1041,7 @@ ast_node* parse_select(token** tokens, int* nb_tokens) {
       (char*)malloc(sizeof(char) * strlen(tablename_right->value));
   strncpy(tablename_left->value, tablename_right->value,
           strlen(tablename_right->value));
-  print_ast(root);
+  /* print_ast(root); */
   if (*nb_tokens <= 1) {
     root->right = NULL;
     return root;
@@ -1057,7 +1059,7 @@ ast_node* parse_select(token** tokens, int* nb_tokens) {
   return NULL;
 }
 
-ast_node* parse_update(token** tokens, int* nb_tokens) {
+ast_node* parse_update(token** tokens, size_t* nb_tokens) {
   if (*nb_tokens < 3) {
     parser_error("Too few tokens for 'update clause': expected 3 got %d",
                  *nb_tokens);
@@ -1161,7 +1163,7 @@ ast_node* parse_update(token** tokens, int* nb_tokens) {
   return NULL;
 }
 
-ast_node* parse_statement(token** tokens, int* nb_tokens) {
+ast_node* parse_statement(token** tokens, size_t* nb_tokens) {
   if (is_token_keyword_drop(*tokens)) {
     return parse_drop(tokens, nb_tokens);
   }
@@ -1251,14 +1253,15 @@ int example_parser(void) {
   input[19] = "INSERT into";                                                          // OKAY failure
   input[20] = "INSERT INTO \"user\" (0xff,'abc',123.45)";                                         // OKAY success
   input[21] = "INSERT INTO \"user\" ()";                                                          // OKAY failure
-  input[22] = "INSERT INTO \"user\" (-19, 'abc', -1.23, 67, 89.01)";                              // OKAY success
+  /* input[22] = "INSERT INTO \"user\" (-19, 'abc', -1.23, 67, 123.45)";                              // OKAY success */
+  input[22] = "INSERT INTO \"user\" (456, -123.45, 'abc')";
   // clang-format on
 
   for (int j = 0; j < 23; j++) {
     printf("\n%s\n", input[j]);
     token** tokens = (token**)malloc(sizeof(token) * MAXTOKEN);
     assert(tokens != NULL);
-    int nb_tokens = lexer(input[j], tokens);
+    size_t nb_tokens = lexer(input[j], tokens);
     for (int i = 0; i < MAXTOKEN; i++) {
       if (tokens[i] == NULL) {
         break;

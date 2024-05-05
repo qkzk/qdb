@@ -67,7 +67,7 @@ const char *skeywords[NBKEYWORDS] = {
 };
 // clang-format on
 
-bool is_keyword(char* word, int len) {
+bool is_keyword(char* word, size_t len) {
   if (len < 2 || len > 7) {
     return false;
   }
@@ -83,7 +83,7 @@ bool is_keyword(char* word, int len) {
 
 // identifier in sql https://sqlite.org/lang_keywords.html
 // identifier are enclosed between double quote "identifier"
-bool is_identifier(char* word, int len) {
+bool is_identifier(char* word, size_t len) {
   if (word[0] != '"') {
     return false;
   }
@@ -98,7 +98,7 @@ bool is_identifier(char* word, int len) {
 }
 
 // literal strings are enclosed between 'literal_string'
-bool is_literal_string(char* word, int len) {
+bool is_literal_string(char* word, size_t len) {
   if (word[0] != '\'') {
     return false;
   }
@@ -116,7 +116,7 @@ bool is_literal_string(char* word, int len) {
 }
 
 // https://koor.fr/C/cstdlib/strtol.wp
-bool is_number(char* word, int len) {
+bool is_number(char* word, size_t len) {
   char* p_end;
   strtod(word, &p_end);
   if (word + len == p_end) {
@@ -140,7 +140,7 @@ const char* len_3_comparison = "AND";
 #define LEN1OPERATORS 5
 const char len_1_operators[LEN1OPERATORS] = "+-*/%";
 
-bool is_comparison(char* word, int len) {
+bool is_comparison(char* word, size_t len) {
   switch (len) {
     case 3:
       return strncmp(word, len_3_comparison, 3) == 0;
@@ -168,7 +168,7 @@ bool is_comparison(char* word, int len) {
   return false;
 }
 
-bool is_operator(char* word, int len) {
+bool is_operator(char* word, size_t len) {
   if (len == 1) {
     for (int i = 0; i < LEN1OPERATORS; i++) {
       if (*word == len_1_operators[i]) {
@@ -179,7 +179,7 @@ bool is_operator(char* word, int len) {
   return false;
 }
 
-bool is_punctuation(char* word, int len) {
+bool is_punctuation(char* word, size_t len) {
   if (len != 1) {
     return false;
   }
@@ -195,14 +195,14 @@ bool is_punctuation(char* word, int len) {
   }
 }
 
-bool is_left_paren(char* word, int len) {
+bool is_left_paren(char* word, size_t len) {
   if (len != 1) {
     return false;
   }
   return word[0] == '(';
 }
 
-bool is_right_paren(char* word, int len) {
+bool is_right_paren(char* word, size_t len) {
   if (len != 1) {
     return false;
   }
@@ -211,11 +211,11 @@ bool is_right_paren(char* word, int len) {
 
 typedef struct Token {
   char* value;
-  int len;
+  size_t len;
   token_kind kind;
 } token;
 
-token* new_token(char* value, int len, token_kind kind) {
+token* new_token(char* value, size_t len, token_kind kind) {
   token* t = (token*)malloc(sizeof(token));
   assert(t != NULL);
   char* v = (char*)malloc(sizeof(char) * (len + 2));
@@ -233,12 +233,12 @@ void print_token(token* tok) {
     printf("Token is NULL\n");
     return;
   }
-  printf("Token kind %s, data: %s, len %d\n", repr_kind(tok->kind), tok->value,
+  printf("Token kind %s, data: %s, len %ld\n", repr_kind(tok->kind), tok->value,
          tok->len);
 }
 
-token* get_next_token(char* line, int* position, int line_len) {
-  int i = 0;
+token* get_next_token(char* line, size_t* position, size_t line_len) {
+  size_t i = 0;
   char c;
   token_kind kind;
   token* tok = NULL;
@@ -308,20 +308,20 @@ token* get_next_token(char* line, int* position, int line_len) {
 
 #define MAXTOKEN 1000
 
-void syntax_error(char* line, int position) {
-  fprintf(stderr, "Syntax error column %d. Unknown token.\n", position);
+void syntax_error(char* line, size_t position) {
+  fprintf(stderr, "Syntax error column %ld. Unknown token.\n", position);
   fprintf(stderr, "%s\n", line);
-  for (int i = 0; i + 2 < position; i++) {
+  for (size_t i = 0; i + 2 < position; i++) {
     fprintf(stderr, " ");
   }
   fprintf(stderr, "^\n");
   exit(1);
 }
 
-int lexer(char* line, token** tokens) {
-  int position = 0;
-  int line_len = strlen(line);
-  int nb_tokens = 0;
+size_t lexer(char* line, token** tokens) {
+  size_t position = 0;
+  size_t line_len = strlen(line);
+  size_t nb_tokens = 0;
   while (position < line_len) {
     token* tok = get_next_token(line, &position, line_len);
     if (tok == NULL) {
