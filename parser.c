@@ -301,7 +301,7 @@ ast_node* parse_literal_positive_float(token** tokens, size_t* nb_tokens) {
   strcat(value, right->value);
   node->value = value;
   node->f_value = atof(value);
-  printf("value: char %s float %f\n", node->value, node->f_value);
+  /* printf("value: char %s float %f\n", node->value, node->f_value); */
   *nb_tokens -= 3;
   return node;
 }
@@ -323,7 +323,7 @@ ast_node* parse_literal_negative_float(token** tokens, size_t* nb_tokens) {
   strcat(value, right->value);
   node->value = value;
   node->f_value = atof(value);
-  printf("value: char %s float %f\n", node->value, node->f_value);
+  /* printf("value: char %s float %f\n", node->value, node->f_value); */
   *nb_tokens -= 4;
   return node;
 }
@@ -815,7 +815,6 @@ ast_node* parse_where(token** tokens, size_t* nb_tokens) {
   /*
   https://gist.github.com/tomdaley92/507c3a99c56b779144d9c79c0a3900be
   */
-  print_token(*tokens);
   ast_node* where = create_node_root(CONDITION, "where");
   if (where == NULL) {
     parser_error("Couldn't create where node");

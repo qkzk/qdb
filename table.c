@@ -10,7 +10,7 @@
 
 #define MAXFORMAT 128
 
-#define DEBUG 0
+#define DEBUG false
 
 void runtime_error(const char* format, ...) {
   va_list args;
@@ -114,7 +114,7 @@ void print_schema(table_desc* td) {
              repr_attr_kind[td->descs[i]->desc]);
     }
   }
-  printf("\n");
+  printf("\n\n");
 }
 
 table_desc* example_create_table_desc(void) {
@@ -236,17 +236,21 @@ table_data* create_page_for_table(table_desc* table) {
   return data;
 }
 
+table_data* execute_create_table(ast_node* root) {
+  return create_page_for_table(create_table_desc_from_ast(root));
+}
+
 void print_page_desc(table_data* data) {
-  printf("Table: %s | ", data->schema->name);
-  printf("Capacity: %ld rows, used rows: %ld, row size: %ld B\n",
+  printf("\nSchema of table: %s\n", data->schema->name);
+  printf("Capacity: %ld rows, used rows: %ld, row size: %ld B\n\n",
          data->capacity, data->nb_rows, data->row_size);
   print_schema(data->schema);
 }
 
-#define MAXTABLE 128
+#define MAXTABLES 128
 
 table_data* find_table_from_name(table_data** tables, char* name) {
-  for (int i = 0; i < MAXTABLE; i++) {
+  for (int i = 0; i < MAXTABLES; i++) {
     if (tables[i] == NULL) {
       break;
     }
@@ -259,7 +263,7 @@ table_data* find_table_from_name(table_data** tables, char* name) {
   return NULL;
 }
 
-bool insert_into_table(table_data** tables, ast_node* root) {
+bool execute_insert_into_table(table_data** tables, ast_node* root) {
   if (root->kind != INSERT) {
     runtime_error("Expected an insert node");
     return false;
@@ -309,9 +313,10 @@ bool insert_into_table(table_data** tables, ast_node* root) {
         break;
       case STRING:
         data = (void*)curr_row->value;
-        if (DEBUG)
+        if (DEBUG) {
           printf("string data in buffer %s - %s\n", (char*)data,
                  curr_row->value);
+        }
         break;
       default:
         runtime_error("Unknown value kind");
@@ -339,8 +344,8 @@ typedef struct ExtractedValue {
 } extracted_value;
 
 bool is_node_comp(ast_node* node) {
-  return node->kind == COMP && (strncmp(node->value, "AND", 3) != 0 ||
-                                strncmp(node->value, "OR", 2) != 0);
+  return node->kind == COMP && strncmp(node->value, "AND", 3) != 0 &&
+         strncmp(node->value, "OR", 2) != 0;
 }
 
 bool is_node_and(ast_node* node) {
@@ -368,8 +373,9 @@ bool run_where(ast_node* condition,
     print_ast(condition);
   }
   if (is_node_comp(condition)) {
-    if (DEBUG)
+    if (DEBUG) {
       printf("Node is a condition\n");
+    }
     // switch about condition
     if (condition->left == NULL || condition->right == NULL) {
       runtime_error("Condition should have both children set.");
@@ -392,14 +398,16 @@ bool run_where(ast_node* condition,
       strcpy(colname, condition->left->value);
       colkind = condition->right->kind;
       is_value_right = true;
-      if (DEBUG)
+      if (DEBUG) {
         printf("found colname on left & value on right\n");
+      }
     } else {
       strcpy(colname, condition->right->value);
       colkind = condition->left->kind;
       is_value_right = false;
-      if (DEBUG)
+      if (DEBUG) {
         printf("found value on left & colname on right\n");
+      }
     }
     // return the comparison
     extracted_value* value = NULL;
@@ -416,18 +424,20 @@ bool run_where(ast_node* condition,
 
     switch (colkind) {
       case INT:
-        if (DEBUG)
+        if (DEBUG) {
           printf("value is an integer\n");
+        }
         literal_int_value = (is_value_right) ? condition->right->i_value
                                              : condition->left->i_value;
-        if (DEBUG)
+        if (DEBUG) {
           printf("literal value %ld\n", literal_int_value);
-
+        }
         for (size_t i = 0; i < nb_attr; i++) {
           if (strcmp(values[i]->colname, colname) == 0) {
             value = values[i];
-            if (DEBUG)
+            if (DEBUG) {
               printf("table value %ld\n", value->i);
+            }
             break;
           }
         }
@@ -456,18 +466,21 @@ bool run_where(ast_node* condition,
         }
         break;
       case FLOAT:
-        if (DEBUG)
+        if (DEBUG) {
           printf("value is a float\n");
+        }
         literal_float_value = (is_value_right) ? condition->right->f_value
                                                : condition->left->f_value;
-        if (DEBUG)
+        if (DEBUG) {
           printf("literal value %f\n", literal_float_value);
+        }
 
         for (size_t i = 0; i < nb_attr; i++) {
           if (strcmp(values[i]->colname, colname) == 0) {
             value = values[i];
-            if (DEBUG)
+            if (DEBUG) {
               printf("table value %f\n", value->f);
+            }
             break;
           }
         }
@@ -488,18 +501,21 @@ bool run_where(ast_node* condition,
         }
         break;
       case STRING:
-        if (DEBUG)
+        if (DEBUG) {
           printf("value is a string\n");
+        }
         literal_string_value =
             (is_value_right) ? condition->right->value : condition->left->value;
-        if (DEBUG)
+        if (DEBUG) {
           printf("literal value %s\n", literal_string_value);
+        }
 
         for (size_t i = 0; i < nb_attr; i++) {
           if (strcmp(values[i]->colname, colname) == 0) {
             value = values[i];
-            if (DEBUG)
+            if (DEBUG) {
               printf("table value %s\n", value->s);
+            }
             break;
           }
         }
@@ -594,13 +610,15 @@ bool keep_row(table_data* table,
         read_value,
         (char*)table->values + row_index * table->row_size + offsets[col_index],
         sizes[col_index]);
-    if (DEBUG)
+    if (DEBUG) {
       printf("%s ", value->colname);
+    }
     switch (kinds[col_index]) {
       case D_INT:
         value->i = *(long*)read_value;
-        if (DEBUG)
+        if (DEBUG) {
           printf("integer value %ld\n", value->i);
+        }
         break;
       case D_FLT:
         value->f = *(double*)read_value;
@@ -609,8 +627,9 @@ bool keep_row(table_data* table,
         value->s =
             (char*)malloc(sizeof(char) * (strlen((char*)read_value) + 1));
         strcpy(value->s, (char*)read_value);
-        if (DEBUG)
+        if (DEBUG) {
           printf("string value %s\n", value->s);
+        }
         break;
     }
     values[col_index] = value;
@@ -619,7 +638,7 @@ bool keep_row(table_data* table,
   return run_where(right->left->left, nb_attr, values, error);
 }
 
-bool select_from_table(table_data** tables, ast_node* root) {
+bool execute_select_from_table(table_data** tables, ast_node* root) {
   if (root->kind != SELECT) {
     runtime_error("Expected a select node");
     return false;
@@ -636,7 +655,6 @@ bool select_from_table(table_data** tables, ast_node* root) {
     runtime_error("Unknown table %s", tablename);
     return false;
   }
-  print_page_desc(table);
 
   char* projection_colnames[table->schema->nb_attr];
   ast_node* col = n_tablename->left;
@@ -676,10 +694,11 @@ bool select_from_table(table_data** tables, ast_node* root) {
     offsets[i] = offset;
   }
 
-  // TODO remove, debugging
-  for (size_t i = 0; i < nb_projection; i++) {
-    printf("column %s, size %ld, offset %ld, kind %d\n", projection_colnames[i],
-           sizes[i], offsets[i], kinds[i]);
+  if (DEBUG) {
+    for (size_t i = 0; i < nb_projection; i++) {
+      printf("column %s, size %ld, offset %ld, kind %d\n",
+             projection_colnames[i], sizes[i], offsets[i], kinds[i]);
+    }
   }
 
   // print the columns names
@@ -694,6 +713,9 @@ bool select_from_table(table_data** tables, ast_node* root) {
   *error = false;
   for (size_t row_index = 0; row_index < table->nb_rows; row_index++) {
     // WHERE CONDITION
+    if (*error) {
+      break;
+    }
     if (!keep_row(table, root->right, row_index, error)) {
       continue;
     }
@@ -729,149 +751,91 @@ bool select_from_table(table_data** tables, ast_node* root) {
   return true;
 }
 
-int main(void) {
-  table_desc* td = example_create_table_desc();
-  print_schema(td);
-  printf("done\n");
+bool execute_request(char* request) {
+  static table_data** tables;
+  static size_t nb_tables;
 
-  // CREATE TABLE
-
-  // clang-format off
-  char* input = "CREATE TABLE \"user\" (\"a\" int pk, \"b\" int, \"c\" varchar ( 32 ) )";
-  // clang-format on
-  printf("\n%s\n", input);
-  token** tokens = (token**)malloc(sizeof(token) * MAXTOKEN);
-  assert(tokens != NULL);
-  size_t nb_tokens = lexer(input, tokens);
-  for (int i = 0; i < MAXTOKEN; i++) {
-    if (tokens[i] == NULL) {
-      break;
-    }
-    print_token(tokens[i]);
+  if (tables == NULL) {
+    tables = (table_data**)malloc(sizeof(table_data) * MAXTABLES);
   }
-  ast_node* root = parse_statement(tokens, &nb_tokens);
-
-  print_ast(root);
-  table_desc* table_from_ast = create_table_desc_from_ast(root);
-  /* print_schema(table_from_ast); */
-  table_data* data_from_ast = create_page_for_table(table_from_ast);
-  print_page_desc(data_from_ast);
-  destroy_tokens(tokens);
-  printf("done creating table\n");
-
-  // FIND TABLE BY NAME
-
-  table_data** tables = (table_data**)malloc(sizeof(table_data) * MAXTABLE);
   assert(tables != NULL);
 
-  tables[0] = data_from_ast;
-  tables[1] = NULL;
-
-  assert(find_table_from_name(tables, "\"user\"") == data_from_ast);
-  printf("done finding table by name\n");
-
-  // INSERT
-
-  input = "INSERT INTO \"user\" (123, 456, 'abc')";
-  printf("\n%s\n\n", input);
-  tokens = (token**)malloc(sizeof(token) * MAXTOKEN);
-  assert(tokens != NULL);
-  nb_tokens = lexer(input, tokens);
-  for (int i = 0; i < MAXTOKEN; i++) {
-    if (tokens[i] == NULL) {
-      break;
-    }
-    print_token(tokens[i]);
+  if (DEBUG) {
+    printf("\n%s\n", request);
   }
-  root = parse_statement(tokens, &nb_tokens);
 
-  print_ast(root);
-
-  bool success = insert_into_table(tables, root);
-  assert(success);
-  printf("done inserting into existing table\n");
-
-  input = "INSERT INTO \"user\" (789, 123, 'defgh')";
-  printf("\n%s\n\n", input);
-  tokens = (token**)malloc(sizeof(token) * MAXTOKEN);
+  token** tokens = (token**)malloc(sizeof(token) * MAXTOKEN);
   assert(tokens != NULL);
-  nb_tokens = lexer(input, tokens);
-  for (int i = 0; i < MAXTOKEN; i++) {
-    if (tokens[i] == NULL) {
-      break;
+  size_t nb_tokens = lexer(request, tokens);
+
+  if (DEBUG) {
+    for (int i = 0; i < MAXTOKEN; i++) {
+      if (tokens[i] == NULL) {
+        break;
+      }
+      print_token(tokens[i]);
     }
-    print_token(tokens[i]);
   }
-  root = parse_statement(tokens, &nb_tokens);
 
-  print_ast(root);
+  ast_node* root = parse_statement(tokens, &nb_tokens);
+  if (root == NULL) {
+    runtime_error("Couldn't parse the request.");
+    return false;
+  }
 
-  success = insert_into_table(tables, root);
-  assert(success);
-  printf("done inserting into existing table\n");
-
-  long* i_data = (long*)malloc(sizeof(long));
-  assert(i_data != NULL);
-  memcpy(i_data, (char*)tables[0]->values, sizeof(long));
-  printf("read long data %ld\n", *i_data);
-
-  long* ii_data = (long*)malloc(sizeof(double));
-  assert(ii_data != NULL);
-  memcpy(ii_data, (char*)tables[0]->values + sizeof(long), sizeof(long));
-  printf("read long data %ld\n", *ii_data);
-
-  char* s_data =
-      (char*)malloc(sizeof(char) * tables[0]->schema->descs[2]->size);
-  assert(s_data != NULL);
-  memcpy(s_data, (char*)tables[0]->values + sizeof(long) + sizeof(long),
-         sizeof(char) * tables[0]->schema->descs[2]->size);
-  printf("read char data %s\n", s_data);
-
-  input =
-      "SELECT \"b\", \"c\", \"a\"  FROM \"user\" WHERE ( \"c\" = 'abc' )";  // OKAY
-                                                                            // success
-
-  printf("\n%s\n\n", input);
-  tokens = (token**)malloc(sizeof(token) * MAXTOKEN);
-  assert(tokens != NULL);
-  nb_tokens = lexer(input, tokens);
-  for (int i = 0; i < MAXTOKEN; i++) {
-    if (tokens[i] == NULL) {
+  if (DEBUG) {
+    print_ast(root);
+  }
+  table_data* data_from_ast;
+  switch (root->kind) {
+    case CREATE:
+      data_from_ast = execute_create_table(root);
+      if (data_from_ast != NULL) {
+        tables[nb_tables] = data_from_ast;
+        nb_tables++;
+        if (DEBUG) {
+          printf("done creating table\n");
+        }
+        return true;
+      } else {
+        runtime_error("Couldn't create the table");
+        return false;
+      }
       break;
-
-      return 1;
-    }
-    print_token(tokens[i]);
+    case INSERT:
+      return execute_insert_into_table(tables, root);
+      break;
+    case SELECT:
+      return execute_select_from_table(tables, root);
+      break;
+    default:
+      runtime_error("Request %s not yet implemented", root->value);
+      return false;
+      break;
   }
-  root = parse_statement(tokens, &nb_tokens);
 
-  print_ast(root);
+  return true;
+}
 
-  success = select_from_table(tables, root);
-  assert(success);
-  printf("done selecting from existing table\n");
-  // char* origin = "content";
-  // char* copy_1 = (char*)malloc(sizeof(char) * (strlen(origin) + 1));
-  // assert(copy_1 != NULL);
-  // strcpy(copy_1, origin);
-  // assert(strcmp(origin, copy_1) == 0);
+int main(void) {
+  if (DEBUG) {
+    table_desc* td = example_create_table_desc();
+    print_schema(td);
+    printf("done creating example table\n");
+  }
 
-  // void* buffer = (void*)malloc(sizeof(char) * (strlen(origin) + 1) +
-  //                              sizeof(long) + sizeof(double));
-  // assert(buffer != NULL);
+  // clang-format off
+  char* request_create = "CREATE TABLE \"user\" (\"a\" int pk, \"b\" int, \"c\" varchar ( 32 ) )";
+  char* request_insert = "INSERT INTO \"user\" (123, 456, 'abc')";
+  char* request_insert_2 = "INSERT INTO \"user\" (789, 123, 'defgh')";
+  /* char* request_select = "SELECT \"b\", \"c\", \"a\"  FROM \"user\" WHERE ( \"c\" = 'abc' )"; */
+  char* request_select = "SELECT \"b\", \"c\", \"a\"  FROM \"user\" WHERE (( \"c\" = 'abc' ) OR ( \"a\" = 789 ))";
+  // clang-format on
 
-  // memcpy(buffer + sizeof(long) + sizeof(double), origin,
-  //        sizeof(char) * (strlen(origin) + 1));
-  // printf("%s %s %s\n", origin, copy_1,
-  //        (char*)(buffer + sizeof(long) + sizeof(double)));
-
-  // char* dest = (char*)malloc(sizeof(char) * 1000);
-  // assert(dest != NULL);
-
-  // memcpy(dest, buffer + sizeof(long) + sizeof(double),
-  //        sizeof(char) * (strlen(origin) + 1));
-
-  // printf("dest %s\n", dest);
+  execute_request(request_create);
+  execute_request(request_insert);
+  execute_request(request_insert_2);
+  execute_request(request_select);
 
   return 0;
 }
