@@ -250,14 +250,15 @@ void print_page_desc(table_data* data) {
 #define MAXTABLES 128
 
 table_data* find_table_from_name(table_data** tables, char* name) {
-  for (int i = 0; i < MAXTABLES; i++) {
+  for (size_t i = 0; i < MAXTABLES; i++) {
     if (tables[i] == NULL) {
       break;
     }
     if (strncmp(tables[i]->schema->name, name, strlen(name)) == 0) {
       return tables[i];
     }
-    tables[i] += 1;
+    // TODO why ???
+    /* tables[i] += 1; */
   }
 
   return NULL;
@@ -401,7 +402,7 @@ bool execute_insert_into_table(table_data** tables, ast_node* root) {
   size_t curr_offset = 0;
   ast_node* curr_col = n_tablename->left;
 
-  for (size_t i = 0; i < table->schema->nb_attr; i++) {
+  for (size_t col_index = 0; col_index < table->schema->nb_attr; col_index++) {
     if (curr_col == NULL ||
         !(curr_col->kind == INT || curr_col->kind == FLOAT ||
           curr_col->kind == STRING)) {
@@ -429,7 +430,7 @@ bool execute_insert_into_table(table_data** tables, ast_node* root) {
         return false;
     }
     // enforce unicity of Primary key
-    if (i == 0) {
+    if (col_index == 0) {
       if (strlen(curr_col->value) == 0) {
         runtime_error("Primary key can't be null");
         return false;
@@ -444,7 +445,7 @@ bool execute_insert_into_table(table_data** tables, ast_node* root) {
       }
     }
     // write the data in the table
-    size_t data_size = table->schema->descs[i]->size;
+    size_t data_size = table->schema->descs[col_index]->size;
     memcpy((char*)table->values + row_offset + curr_offset, data, data_size);
     curr_offset += data_size;
 
@@ -796,6 +797,61 @@ bool execute_select_from_table(table_data** tables, ast_node* root) {
   return true;
 }
 
+bool execute_drop_table(table_data** tables, ast_node* root, size_t nb_tables) {
+  if (DEBUG) {
+    print_ast(root);
+  }
+  if (nb_tables == 0) {
+    runtime_error("No table to drop");
+    return false;
+  }
+  if (root->kind != DROP) {
+    runtime_error("Expected a DROP node");
+    return false;
+  }
+  ast_node* n_tablename = root->left;
+  if (n_tablename == NULL || n_tablename->kind != TABLENAME) {
+    runtime_error("Expected a TABLENAME node");
+    return false;
+  }
+  char* tablename = n_tablename->value;
+
+  table_data* table = NULL;
+  size_t i = 0;
+
+  // Find the index of the table -- can't use find by name which doesn't return
+  // an index
+  for (; i < nb_tables; i++) {
+    if (tables[i] == NULL) {
+      continue;
+    }
+    if (strncmp(tables[i]->schema->name, tablename, strlen(tablename)) == 0) {
+      table = tables[i];
+      break;
+    }
+  }
+
+  if (table == NULL) {
+    runtime_error("Can't find table %s", tablename);
+    return false;
+  }
+  if (DEBUG) {
+    printf("found table %s index %ld\n", tablename, i);
+    print_page_desc(table);
+  }
+  if (nb_tables > 1) {
+    for (size_t j = nb_tables - 2; j >= i; j--) {
+      if (tables[j + 1] != NULL) {
+        memcpy(tables[j], tables[j + 1], sizeof(&tables[j + 1]));
+      }
+      if (j == 0) {
+        break;
+      }
+    }
+  }
+  return true;
+}
+
 bool execute_request(char* request) {
   static table_data** tables;
   static size_t nb_tables;
@@ -853,6 +909,13 @@ bool execute_request(char* request) {
     case SELECT:
       return execute_select_from_table(tables, root);
       break;
+    case DROP:
+      bool ret = execute_drop_table(tables, root, nb_tables);
+      if (ret) {
+        nb_tables -= 1;
+      }
+      return ret;
+      break;
     default:
       runtime_error("Request %s not yet implemented", root->value);
       return false;
@@ -870,19 +933,24 @@ int main(void) {
   }
 
   // clang-format off
-  char* request_create = "CREATE TABLE \"user\" (\"a\" int pk, \"b\" int, \"c\" varchar ( 32 ) )";
+  char* request_create = "CREATE TABLE \"to_drop\" (\"a\" int pk, \"b\" int, \"c\" varchar ( 32 ) )";
+  char* request_create_2 = "CREATE TABLE \"user\" (\"a\" int pk, \"b\" int, \"c\" varchar ( 32 ) )";
   char* request_insert = "INSERT INTO \"user\" (123, 456, 'abc')";
   char* request_insert_2 = "INSERT INTO \"user\" (789, 123, 'defgh')";
   char* request_insert_3 = "INSERT INTO \"user\" (789, 333, 'xyz')";
   /* char* request_select = "SELECT \"b\", \"c\", \"a\"  FROM \"user\" WHERE ( \"c\" = 'abc' )"; */
   char* request_select = "SELECT \"b\", \"c\", \"a\"  FROM \"user\" WHERE (( \"c\" = 'abc' ) OR ( \"a\" = 789 ))";
+  char* request_drop = "DROP TABLE \"to_drop\"";
   // clang-format on
 
-  execute_request(request_create);
-  execute_request(request_insert);
-  execute_request(request_insert_2);
-  execute_request(request_insert_3);
-  execute_request(request_select);
+  assert(execute_request(request_create));
+  assert(execute_request(request_create_2));
+  assert(execute_request(request_insert));
+  assert(execute_request(request_insert_2));
+  assert(!execute_request(request_insert_3));  // duplicate primary key
+  assert(execute_request(request_select));
+  assert(execute_request(request_drop));
+  assert(!execute_request(request_drop));  // already dropped
 
   return 0;
 }
