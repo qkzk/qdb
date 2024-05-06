@@ -225,7 +225,7 @@ table_data* create_page_for_table(table_desc* table) {
   assert(data != NULL);
   data->schema = table;
   data->nb_rows = 0;
-  data->capacity = 128;
+  data->capacity = 16;
   data->row_size = 0;
   for (size_t i = 0; i < table->nb_attr; i++) {
     data->row_size += table->descs[i]->size;
@@ -381,10 +381,16 @@ bool execute_insert_into_table(table_data** tables, ast_node* root) {
     return false;
   }
 
-  // TODO realloc
+  // increase capacity & realloc
   if (table->nb_rows + 1 >= table->capacity) {
-    runtime_error("Table %s is full", tablename);
-    return false;
+    table->capacity *= 2;
+    table->values =
+        (void*)realloc(table->values, table->row_size * table->capacity);
+    assert(table->values != NULL);
+    if (DEBUG) {
+      runtime_error("Capacity reached for %s, expanding capacity", tablename);
+      print_page_desc(table);
+    }
   }
 
   // bla
@@ -422,8 +428,12 @@ bool execute_insert_into_table(table_data** tables, ast_node* root) {
         runtime_error("Unknown value kind");
         return false;
     }
-    // check unicity of Primary key
+    // enforce unicity of Primary key
     if (i == 0) {
+      if (strlen(curr_row->value) == 0) {
+        runtime_error("Primary key can't be null");
+        return false;
+      }
       for (size_t row_index = 0; row_index < table->nb_rows; row_index++) {
         extracted_value** values =
             get_row_values(table, row_index, table->schema->nb_attr);
@@ -433,6 +443,7 @@ bool execute_insert_into_table(table_data** tables, ast_node* root) {
         }
       }
     }
+    // write the data in the table
     size_t data_size = table->schema->descs[i]->size;
     memcpy((char*)table->values + row_offset + curr_offset, data, data_size);
     curr_offset += data_size;
