@@ -393,35 +393,35 @@ bool execute_insert_into_table(table_data** tables, ast_node* root) {
     }
   }
 
-  // bla
+  // allocate for a new row
   void* row_dest = (void*)malloc(table->row_size);
   assert(row_dest != NULL);
 
   size_t row_offset = table->nb_rows * table->row_size;
   size_t curr_offset = 0;
+  ast_node* curr_col = n_tablename->left;
 
-  ast_node* curr_row = n_tablename->left;
   for (size_t i = 0; i < table->schema->nb_attr; i++) {
-    if (curr_row == NULL ||
-        !(curr_row->kind == INT || curr_row->kind == FLOAT ||
-          curr_row->kind == STRING)) {
+    if (curr_col == NULL ||
+        !(curr_col->kind == INT || curr_col->kind == FLOAT ||
+          curr_col->kind == STRING)) {
       runtime_error("Expected a value (INT, FLOAT, STRING) node");
       return false;
     }
 
     void* data;
-    switch (curr_row->kind) {
+    switch (curr_col->kind) {
       case INT:
-        data = (void*)&curr_row->i_value;
+        data = (void*)&curr_col->i_value;
         break;
       case FLOAT:
-        data = (void*)&curr_row->f_value;
+        data = (void*)&curr_col->f_value;
         break;
       case STRING:
-        data = (void*)curr_row->value;
+        data = (void*)curr_col->value;
         if (DEBUG) {
           printf("string data in buffer %s - %s\n", (char*)data,
-                 curr_row->value);
+                 curr_col->value);
         }
         break;
       default:
@@ -430,14 +430,14 @@ bool execute_insert_into_table(table_data** tables, ast_node* root) {
     }
     // enforce unicity of Primary key
     if (i == 0) {
-      if (strlen(curr_row->value) == 0) {
+      if (strlen(curr_col->value) == 0) {
         runtime_error("Primary key can't be null");
         return false;
       }
       for (size_t row_index = 0; row_index < table->nb_rows; row_index++) {
         extracted_value** values =
             get_row_values(table, row_index, table->schema->nb_attr);
-        if (compare_extracted_value(*values, curr_row)) {
+        if (compare_extracted_value(*values, curr_col)) {
           runtime_error("Primary key must be unique");
           return false;
         }
@@ -448,7 +448,7 @@ bool execute_insert_into_table(table_data** tables, ast_node* root) {
     memcpy((char*)table->values + row_offset + curr_offset, data, data_size);
     curr_offset += data_size;
 
-    curr_row = curr_row->left;
+    curr_col = curr_col->left;
   }
   table->nb_rows += 1;
 
