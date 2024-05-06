@@ -263,6 +263,106 @@ table_data* find_table_from_name(table_data** tables, char* name) {
   return NULL;
 }
 
+typedef struct ExtractedValue {
+  char* colname;
+  attr_kind kind;
+  union {
+    long i;
+    double f;
+    char* s;
+  };
+} extracted_value;
+
+bool compare_extracted_value(extracted_value* a, ast_node* b) {
+  switch (a->kind) {
+    case D_INT:
+      return a->i == b->i_value;
+      break;
+    case D_FLT:
+      return a->f == b->f_value;
+      break;
+    case D_CHR:
+      return strcmp(a->s, b->value) == 0;
+      break;
+  }
+  return false;
+}
+
+extracted_value** get_row_values(table_data* table,
+                                 size_t row_index,
+                                 size_t nb_attr) {
+  extracted_value** values =
+      (extracted_value**)malloc(sizeof(extracted_value*) * nb_attr);
+  assert(values != NULL);
+
+  char* colnames[nb_attr];
+  size_t sizes[nb_attr];
+  attr_kind kinds[nb_attr];
+  size_t offsets[nb_attr];
+
+  size_t offset = 0;
+  size_t col_index = 0;
+  for (; col_index < nb_attr; col_index++) {
+    char* colname = table->schema->descs[col_index]->name;
+    colnames[col_index] = (char*)malloc(sizeof(char) * (strlen(colname) + 1));
+    assert(colnames[col_index] != NULL);
+
+    strncpy(colnames[col_index], colname, strlen(colname) + 1);
+    sizes[col_index] = table->schema->descs[col_index]->size;
+    kinds[col_index] = table->schema->descs[col_index]->desc;
+    offsets[col_index] = offset;
+    offset += table->schema->descs[col_index]->size;
+  }
+  offsets[col_index] = offset;
+
+  // extract the values
+
+  for (size_t col_index = 0; col_index < nb_attr; col_index++) {
+    void* read_value = (void*)malloc(sizes[col_index]);
+    assert(read_value != NULL);
+    /* printf("offset : %ld, size read: %ld\n", */
+    /*        line_index * table->row_size + offsets[col_index], */
+    /*        sizes[col_index]); */
+    extracted_value* value = (extracted_value*)malloc(sizeof(extracted_value));
+    assert(value != NULL);
+    value->kind = kinds[col_index];
+    value->colname =
+        (char*)malloc(sizeof(char*) * (strlen(colnames[col_index]) + 1));
+    assert(value->colname != NULL);
+    strcpy(value->colname, colnames[col_index]);
+
+    memcpy(
+        read_value,
+        (char*)table->values + row_index * table->row_size + offsets[col_index],
+        sizes[col_index]);
+    if (DEBUG) {
+      printf("%s ", value->colname);
+    }
+    switch (kinds[col_index]) {
+      case D_INT:
+        value->i = *(long*)read_value;
+        if (DEBUG) {
+          printf("integer value %ld\n", value->i);
+        }
+        break;
+      case D_FLT:
+        value->f = *(double*)read_value;
+        break;
+      case D_CHR:
+        value->s =
+            (char*)malloc(sizeof(char) * (strlen((char*)read_value) + 1));
+        strcpy(value->s, (char*)read_value);
+        if (DEBUG) {
+          printf("string value %s\n", value->s);
+        }
+        break;
+    }
+    values[col_index] = value;
+  }
+
+  return values;
+}
+
 bool execute_insert_into_table(table_data** tables, ast_node* root) {
   if (root->kind != INSERT) {
     runtime_error("Expected an insert node");
@@ -322,6 +422,17 @@ bool execute_insert_into_table(table_data** tables, ast_node* root) {
         runtime_error("Unknown value kind");
         return false;
     }
+    // check unicity of Primary key
+    if (i == 0) {
+      for (size_t row_index = 0; row_index < table->nb_rows; row_index++) {
+        extracted_value** values =
+            get_row_values(table, row_index, table->schema->nb_attr);
+        if (compare_extracted_value(*values, curr_row)) {
+          runtime_error("Primary key must be unique");
+          return false;
+        }
+      }
+    }
     size_t data_size = table->schema->descs[i]->size;
     memcpy((char*)table->values + row_offset + curr_offset, data, data_size);
     curr_offset += data_size;
@@ -332,16 +443,6 @@ bool execute_insert_into_table(table_data** tables, ast_node* root) {
 
   return true;
 }
-
-typedef struct ExtractedValue {
-  char* colname;
-  attr_kind kind;
-  union {
-    long i;
-    double f;
-    char* s;
-  };
-} extracted_value;
 
 bool is_node_comp(ast_node* node) {
   return node->kind == COMP && strncmp(node->value, "AND", 3) != 0 &&
@@ -566,75 +667,8 @@ bool keep_row(table_data* table,
     runtime_error("Expected a where condition");
     return false;
   }
-  // extract all row values sequentially, store them in union
   size_t nb_attr = table->schema->nb_attr;
-  extracted_value* values[nb_attr];
-
-  char* colnames[nb_attr];
-  size_t sizes[nb_attr];
-  attr_kind kinds[nb_attr];
-  size_t offsets[nb_attr];
-
-  size_t offset = 0;
-  size_t col_index = 0;
-  for (; col_index < nb_attr; col_index++) {
-    char* colname = table->schema->descs[col_index]->name;
-    colnames[col_index] = (char*)malloc(sizeof(char) * (strlen(colname) + 1));
-    assert(colnames[col_index] != NULL);
-
-    strncpy(colnames[col_index], colname, strlen(colname) + 1);
-    sizes[col_index] = table->schema->descs[col_index]->size;
-    kinds[col_index] = table->schema->descs[col_index]->desc;
-    offsets[col_index] = offset;
-    offset += table->schema->descs[col_index]->size;
-  }
-  offsets[col_index] = offset;
-
-  // extract the values
-
-  for (size_t col_index = 0; col_index < nb_attr; col_index++) {
-    void* read_value = (void*)malloc(sizes[col_index]);
-    assert(read_value != NULL);
-    /* printf("offset : %ld, size read: %ld\n", */
-    /*        line_index * table->row_size + offsets[col_index], */
-    /*        sizes[col_index]); */
-    extracted_value* value = (extracted_value*)malloc(sizeof(extracted_value));
-    assert(value != NULL);
-    value->kind = kinds[col_index];
-    value->colname =
-        (char*)malloc(sizeof(char*) * (strlen(colnames[col_index]) + 1));
-    assert(value->colname != NULL);
-    strcpy(value->colname, colnames[col_index]);
-
-    memcpy(
-        read_value,
-        (char*)table->values + row_index * table->row_size + offsets[col_index],
-        sizes[col_index]);
-    if (DEBUG) {
-      printf("%s ", value->colname);
-    }
-    switch (kinds[col_index]) {
-      case D_INT:
-        value->i = *(long*)read_value;
-        if (DEBUG) {
-          printf("integer value %ld\n", value->i);
-        }
-        break;
-      case D_FLT:
-        value->f = *(double*)read_value;
-        break;
-      case D_CHR:
-        value->s =
-            (char*)malloc(sizeof(char) * (strlen((char*)read_value) + 1));
-        strcpy(value->s, (char*)read_value);
-        if (DEBUG) {
-          printf("string value %s\n", value->s);
-        }
-        break;
-    }
-    values[col_index] = value;
-  }
-  // explore the tree...
+  extracted_value** values = get_row_values(table, row_index, nb_attr);
   return run_where(right->left->left, nb_attr, values, error);
 }
 
@@ -828,6 +862,7 @@ int main(void) {
   char* request_create = "CREATE TABLE \"user\" (\"a\" int pk, \"b\" int, \"c\" varchar ( 32 ) )";
   char* request_insert = "INSERT INTO \"user\" (123, 456, 'abc')";
   char* request_insert_2 = "INSERT INTO \"user\" (789, 123, 'defgh')";
+  char* request_insert_3 = "INSERT INTO \"user\" (789, 333, 'xyz')";
   /* char* request_select = "SELECT \"b\", \"c\", \"a\"  FROM \"user\" WHERE ( \"c\" = 'abc' )"; */
   char* request_select = "SELECT \"b\", \"c\", \"a\"  FROM \"user\" WHERE (( \"c\" = 'abc' ) OR ( \"a\" = 789 ))";
   // clang-format on
@@ -835,6 +870,7 @@ int main(void) {
   execute_request(request_create);
   execute_request(request_insert);
   execute_request(request_insert_2);
+  execute_request(request_insert_3);
   execute_request(request_select);
 
   return 0;
