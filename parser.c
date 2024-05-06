@@ -574,6 +574,7 @@ ast_node* parse_primary_column(token** tokens, size_t* nb_tokens) {
 }
 
 ast_node* parse_create(token** tokens, size_t* nb_tokens) {
+  printf("create table called\n");
   if (!is_token_keyword_create(*tokens) ||
       !is_keyword_this(*(tokens + 1), "TABLE")) {
     parser_error("Expected CREATE TABLE.");
@@ -1163,6 +1164,10 @@ ast_node* parse_update(token** tokens, size_t* nb_tokens) {
 }
 
 ast_node* parse_statement(token** tokens, size_t* nb_tokens) {
+  if (*nb_tokens == 0) {
+    parser_error("Invalid tokens");
+    return NULL;
+  }
   if (is_token_keyword_drop(*tokens)) {
     return parse_drop(tokens, nb_tokens);
   }

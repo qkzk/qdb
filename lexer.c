@@ -315,7 +315,6 @@ void syntax_error(char* line, size_t position) {
     fprintf(stderr, " ");
   }
   fprintf(stderr, "^\n");
-  exit(1);
 }
 
 size_t lexer(char* line, token** tokens) {
@@ -326,6 +325,7 @@ size_t lexer(char* line, token** tokens) {
     token* tok = get_next_token(line, &position, line_len);
     if (tok == NULL) {
       syntax_error(line, position);
+      return 0;
     }
     tokens[nb_tokens++] = tok;
   }

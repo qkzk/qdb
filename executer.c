@@ -240,7 +240,7 @@ table_data* execute_create_table(ast_node* root) {
   return create_page_for_table(create_table_desc_from_ast(root));
 }
 
-void print_page_desc(table_data* data) {
+void print_table(table_data* data) {
   printf("\nSchema of table: %s\n", data->schema->name);
   printf("Capacity: %ld rows, used rows: %ld, row size: %ld B\n\n",
          data->capacity, data->nb_rows, data->row_size);
@@ -390,7 +390,7 @@ bool execute_insert_into_table(table_data** tables, ast_node* root) {
     assert(table->values != NULL);
     if (DEBUG) {
       runtime_error("Capacity reached for %s, expanding capacity", tablename);
-      print_page_desc(table);
+      print_table(table);
     }
   }
 
@@ -697,7 +697,7 @@ bool execute_select_from_table(table_data** tables, ast_node* root) {
 
   table_data* table = find_table_from_name(tables, tablename);
   if (DEBUG) {
-    print_page_desc(table);
+    print_table(table);
   }
   if (table == NULL) {
     runtime_error("Unknown table %s", tablename);
@@ -852,7 +852,7 @@ bool execute_drop_table(table_data** tables, ast_node* root, size_t nb_tables) {
   }
   if (DEBUG) {
     printf("found table %s index %ld\n", tablename, i);
-    print_page_desc(table);
+    print_table(table);
   }
   if (nb_tables > 1) {
     for (size_t j = nb_tables - 2; j >= i; j--) {
@@ -968,7 +968,7 @@ bool execute_update_table(table_data** tables, ast_node* root) {
 
   table_data* table = find_table_from_name(tables, tablename);
   if (DEBUG) {
-    print_page_desc(table);
+    print_table(table);
   }
   if (table == NULL) {
     runtime_error("Unknown table %s", tablename);
@@ -1105,14 +1105,40 @@ bool execute_update_table(table_data** tables, ast_node* root) {
   return true;
 }
 
-bool execute_request(char* request) {
-  static table_data** tables;
-  static size_t nb_tables;
+static table_data** tables;
+static size_t nb_tables;
 
+bool execute_command(char* command) {
+  if (DEBUG) {
+    printf("Command: %s\n", command);
+  }
+  if (strcmp(command, ".exit") == 0) {
+    exit(0);
+  } else if (strcmp(command, ".tables") == 0) {
+    if (nb_tables == 0) {
+      printf("No table set.\n");
+    }
+    for (size_t index_table = 0; index_table < nb_tables; index_table++) {
+      print_table(tables[index_table]);
+    }
+  } else {
+    printf("Unknown command %s\n", command);
+  }
+  return true;
+}
+
+bool execute_request(char* request) {
   if (tables == NULL) {
     tables = (table_data**)malloc(sizeof(table_data) * MAXTABLES);
   }
   assert(tables != NULL);
+  if (strlen(request) == 0) {
+    return false;
+  }
+  if (request[0] == '.') {
+    return execute_command(request);
+  }
+  printf("execute_request: %s\n", request);
 
   if (DEBUG) {
     printf("\n%s\n", request);
@@ -1121,19 +1147,25 @@ bool execute_request(char* request) {
   token** tokens = (token**)malloc(sizeof(token) * MAXTOKEN);
   assert(tokens != NULL);
   size_t nb_tokens = lexer(request, tokens);
-
-  if (DEBUG) {
-    for (int i = 0; i < MAXTOKEN; i++) {
-      if (tokens[i] == NULL) {
-        break;
-      }
-      print_token(tokens[i]);
-    }
+  if (nb_tokens == 0) {
+    runtime_error("Lexer failed to tokenize the request");
+    return false;
   }
+
+  /* if (DEBUG) { */
+  printf("\ntokens\n");
+  for (int i = 0; i < MAXTOKEN; i++) {
+    if (tokens[i] == NULL) {
+      break;
+    }
+    print_token(tokens[i]);
+  }
+  printf("\n");
+  /* } */
 
   ast_node* root = parse_statement(tokens, &nb_tokens);
   if (root == NULL) {
-    runtime_error("Couldn't parse the request.");
+    runtime_error("Parser failed to analyse the tokens.");
     return false;
   }
 
@@ -1188,7 +1220,7 @@ bool execute_request(char* request) {
   return true;
 }
 
-int main(void) {
+int example_executer(void) {
   if (DEBUG) {
     table_desc* td = example_create_table_desc();
     print_schema(td);
