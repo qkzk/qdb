@@ -650,7 +650,7 @@ ast_node* parse_create(token** tokens, size_t* nb_tokens) {
   if (expect(RIGHT_PAREN, *tokens)) {
     // no other column, advance
     set_leaf(first_col);
-    print_ast(root);
+    /* print_ast(root); */
     if (*nb_tokens != 1) {
       parser_error("too much tokens left expected 1 got %d", *nb_tokens);
       return NULL;
@@ -967,12 +967,12 @@ ast_node* parse_delete(token** tokens, size_t* nb_tokens) {
     return NULL;
   }
   ast_node* table = parse_tablename(tokens, nb_tokens);
+  *nb_tokens = *nb_tokens - 1;
   root->left = table;
   if (*nb_tokens == 0) {
     set_leaf(table);
     return root;
   } else {
-    *nb_tokens = *nb_tokens - 1;
     tokens += 1;
     ast_node* where = parse_where(tokens, nb_tokens);
     if (where == NULL) {
@@ -1106,37 +1106,37 @@ ast_node* parse_update(token** tokens, size_t* nb_tokens) {
   *nb_tokens -= 1;
   tablename_left->left = set;
 
-  print_ast(root);
+  /* print_ast(root); */
   ast_node* current = set;
   /* ast_node *next; */
   // while colname identifier loop
   while (true) {
-    print_token(*tokens);
+    /* print_token(*tokens); */
     ast_node* next = parse_colname(tokens, nb_tokens);
     if (next == NULL) {
       parser_error("Couldn't parse colname");
       return NULL;
     }
     tokens += 1;
-    print_token(*tokens);
+    /* print_token(*tokens); */
     if (!is_token_comparison(*tokens) || (*tokens)->value[0] != '=' ||
         (*tokens)->len != 1) {
       parser_error("Expected =");
-      print_token(*tokens);
+      /* print_token(*tokens); */
       return NULL;
     }
     *nb_tokens -= 1;
     tokens += 1;
-    print_token(*tokens);
+    /* print_token(*tokens); */
     ast_node* value = parse_literal(tokens, nb_tokens);
     if (value == NULL) {
       parser_error("Expected a literal");
       return NULL;
     }
     next->right = value;
-    print_ast(next);
+    /* print_ast(next); */
     tokens += value->nb_tokens;
-    print_token(*tokens);
+    /* print_token(*tokens); */
 
     current->left = next;
     current = next;
@@ -1146,8 +1146,8 @@ ast_node* parse_update(token** tokens, size_t* nb_tokens) {
     tokens += 1;
     *nb_tokens -= 1;
   }
-  print_ast(root);
-  print_token(*tokens);
+  /* print_ast(root); */
+  /* print_token(*tokens); */
   if (*nb_tokens <= 1) {
     return root;
   } else {

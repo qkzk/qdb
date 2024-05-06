@@ -646,7 +646,6 @@ bool run_where(ast_node* condition,
           return false;
         }
         break;
-        break;
       default:
         runtime_error("Invalid node kind for a comparison value");
         *error = true;
@@ -697,6 +696,9 @@ bool execute_select_from_table(table_data** tables, ast_node* root) {
   char* tablename = n_tablename->value;
 
   table_data* table = find_table_from_name(tables, tablename);
+  if (DEBUG) {
+    print_page_desc(table);
+  }
   if (table == NULL) {
     runtime_error("Unknown table %s", tablename);
     return false;
@@ -748,10 +750,19 @@ bool execute_select_from_table(table_data** tables, ast_node* root) {
   }
 
   // print the columns names
+  printf("\n");
+  for (size_t i = 0; i < nb_projection; i++) {
+    printf("+--------------");
+  }
+  printf("+\n");
   for (size_t i = 0; i < nb_projection; i++) {
     printf("|   %8s   ", projection_colnames[i]);
   }
   printf("|\n");
+  for (size_t i = 0; i < nb_projection; i++) {
+    printf("+--------------");
+  }
+  printf("+\n");
 
   // print the values
   bool* error = (bool*)malloc(sizeof(bool));
@@ -787,12 +798,16 @@ bool execute_select_from_table(table_data** tables, ast_node* root) {
           printf("  %8.3f    |", *(double*)read_value);
           break;
         case D_CHR:
-          printf("  %8s     |", (char*)read_value);
+          printf("  %8s    |", (char*)read_value);
           break;
       }
     }
     printf("\n");
   }
+  for (size_t i = 0; i < nb_projection; i++) {
+    printf("+--------------");
+  }
+  printf("+\n");
 
   return true;
 }
@@ -842,13 +857,251 @@ bool execute_drop_table(table_data** tables, ast_node* root, size_t nb_tables) {
   if (nb_tables > 1) {
     for (size_t j = nb_tables - 2; j >= i; j--) {
       if (tables[j + 1] != NULL) {
-        memcpy(tables[j], tables[j + 1], sizeof(&tables[j + 1]));
+        // TODO
+        if (DEBUG) {
+          printf("moving into %ld from %ld\n", j, j + 1);
+        }
+        memmove(tables[j], tables[j + 1], sizeof(&tables[j + 1]));
+        tables[j]->nb_rows = tables[j + 1]->nb_rows;
+        tables[j]->capacity = tables[j + 1]->capacity;
+        tables[j]->row_size = tables[j + 1]->row_size;
+        memmove(tables[j]->schema, tables[j + 1]->schema,
+                sizeof(&(tables[j + 1]->schema)));
+        memmove(tables[j]->values, tables[j + 1]->values,
+                tables[j + 1]->row_size * tables[j + 1]->capacity);
       }
       if (j == 0) {
         break;
       }
     }
   }
+  return true;
+}
+
+bool execute_delete_from_table(table_data** tables, ast_node* root) {
+  if (DEBUG) {
+    print_ast(root);
+  }
+  if (root->kind != DELETE) {
+    runtime_error("Expected a select node");
+    return false;
+  }
+  ast_node* n_tablename = root->left;
+  if (n_tablename == NULL || n_tablename->kind != TABLENAME) {
+    runtime_error("Expected a tablename node");
+    return false;
+  }
+  char* tablename = n_tablename->value;
+
+  table_data* table = find_table_from_name(tables, tablename);
+  if (table == NULL) {
+    runtime_error("Unknown table %s", tablename);
+    return false;
+  }
+  if (table->nb_rows == 0) {
+    runtime_error("Table %s is empty", tablename);
+    return false;
+  }
+
+  ast_node* where = n_tablename->left;
+
+  // when no where clause, clear the table completely
+  if (where == NULL) {
+    table->nb_rows = 0;
+    return true;
+  }
+  ast_node* condition = where->left;
+  if (condition == NULL) {
+    runtime_error("Expected a CONDITION node");
+    return false;
+  }
+
+  bool* error = (bool*)malloc(sizeof(bool));
+  *error = false;
+
+  // find row to delete
+  size_t nb_rows = table->nb_rows;
+  size_t nb_attr = table->schema->nb_attr;
+  for (size_t row_index = table->nb_rows - 1;; row_index--) {
+    extracted_value** value = get_row_values(table, row_index, nb_attr);
+    if (run_where(condition, nb_attr, value, error)) {
+      if (*error) {
+        runtime_error("Error while exploring the condition");
+        return false;
+      }
+      if (DEBUG) {
+        printf("found row to delete %ld\n", row_index);
+      }
+      // move every row after j to j
+      memmove((char*)table->values + table->row_size * row_index,
+              (char*)table->values + table->row_size * (row_index + 1),
+              table->row_size * (table->nb_rows - row_index + 1));
+      nb_rows -= 1;
+      if (nb_rows == 0) {
+        break;
+      }
+    }
+    if (row_index == 0) {
+      break;
+    }
+    table->nb_rows = nb_rows;
+  }
+
+  return true;
+}
+
+bool execute_update_table(table_data** tables, ast_node* root) {
+  if (DEBUG) {
+    print_ast(root);
+  }
+
+  if (root->kind != UPDATE) {
+    runtime_error("Expected a, update node");
+    return false;
+  }
+  ast_node* n_tablename = root->left;
+  if (n_tablename == NULL || n_tablename->kind != TABLENAME) {
+    runtime_error("Expected a tablename node");
+    return false;
+  }
+  char* tablename = n_tablename->value;
+
+  table_data* table = find_table_from_name(tables, tablename);
+  if (DEBUG) {
+    print_page_desc(table);
+  }
+  if (table == NULL) {
+    runtime_error("Unknown table %s", tablename);
+    return false;
+  }
+  ast_node* set = n_tablename->left;
+  if (set == NULL || set->kind != SET) {
+    runtime_error("Expected a SET node");
+    return false;
+  }
+
+  // extract colnames & values from ast
+  char* set_colnames[table->schema->nb_attr];
+  ast_node* set_values[table->schema->nb_attr];
+  ast_node* col = set->left;
+
+  size_t nb_set = 0;
+
+  for (; nb_set < table->schema->nb_attr; nb_set++) {
+    if (col == NULL || col->right == NULL) {
+      break;
+    }
+    size_t colname_len = strlen(col->value);
+    set_colnames[nb_set] = (char*)malloc(sizeof(char) * (colname_len + 1));
+    assert(set_colnames[nb_set] != NULL);
+    strncpy(set_colnames[nb_set], col->value, colname_len);
+    set_colnames[nb_set][colname_len] = '\0';
+
+    size_t value_len = strlen(col->right->value);
+    set_values[nb_set] = (ast_node*)malloc(sizeof(ast_node));
+    assert(set_values[nb_set] != NULL);
+    set_values[nb_set]->kind = col->right->kind;
+    set_values[nb_set]->f_value = col->right->f_value;
+    set_values[nb_set]->i_value = col->right->i_value;
+    set_values[nb_set]->value = (char*)malloc(sizeof(char) * (value_len + 1));
+    assert(set_values[nb_set]->value != NULL);
+    strcpy(set_values[nb_set]->value, col->right->value);
+    if (DEBUG) {
+      printf("update got:\n");
+      print_ast(set_values[nb_set]);
+    }
+
+    col = col->left;
+  }
+
+  // search in the schema for sizes, offsets & kinds
+
+  size_t offsets[nb_set];
+  size_t sizes[nb_set];
+  attr_kind kinds[nb_set];
+
+  for (size_t i = 0; i < nb_set; i++) {
+    char* colname = set_colnames[i];
+    size_t offset = 0;
+    for (size_t j = 0; j < table->schema->nb_attr; j++) {
+      if (strcmp(colname, table->schema->descs[j]->name) == 0) {
+        sizes[i] = table->schema->descs[j]->size;
+        kinds[i] = table->schema->descs[j]->desc;
+        break;
+      }
+      offset += table->schema->descs[j]->size;
+    }
+    offsets[i] = offset;
+  }
+
+  if (DEBUG) {
+    for (size_t i = 0; i < nb_set; i++) {
+      printf("column %s, size %ld, offset %ld, kind %d\n", set_colnames[i],
+             sizes[i], offsets[i], kinds[i]);
+    }
+  }
+
+  // set the new values
+  bool* error = (bool*)malloc(sizeof(bool));
+  assert(error != NULL);
+  *error = false;
+  for (size_t row_index = 0; row_index < table->nb_rows; row_index++) {
+    // WHERE CONDITION
+    if (*error) {
+      break;
+    }
+    if (!keep_row(table, root->right, row_index, error)) {
+      continue;
+    }
+    if (*error) {
+      break;
+    }
+    size_t row_offset = table->row_size * row_index;
+    for (size_t col_index = 0; col_index < nb_set; col_index++) {
+      // enforce unicity of Primary key
+      ast_node* set_value = set_values[col_index];
+
+      if (col_index == 0) {
+        if (strlen(set_value->value) == 0) {
+          runtime_error("Primary key can't be null");
+          return false;
+        }
+        for (size_t row_index = 0; row_index < table->nb_rows; row_index++) {
+          extracted_value** values =
+              get_row_values(table, row_index, table->schema->nb_attr);
+          if (compare_extracted_value(*values, set_value)) {
+            runtime_error("Primary key must be unique");
+            return false;
+          }
+        }
+      }
+
+      void* data;
+      switch (set_value->kind) {
+        case INT:
+          data = (void*)&set_value->i_value;
+          break;
+        case FLOAT:
+          data = (void*)&set_value->f_value;
+          break;
+        case STRING:
+          data = (void*)set_value->value;
+          if (DEBUG) {
+            printf("string data in buffer %s - %s\n", (char*)data,
+                   set_value->value);
+          }
+          break;
+        default:
+          runtime_error("Unknown value kind");
+          return false;
+      }
+
+      size_t data_size = table->schema->descs[col_index]->size;
+      memcpy((char*)table->values + row_offset + offsets[col_index], data,
+             data_size);
+    }
+  }
+
   return true;
 }
 
@@ -910,14 +1163,24 @@ bool execute_request(char* request) {
       return execute_select_from_table(tables, root);
       break;
     case DROP:
+      if (nb_tables == 0) {
+        runtime_error("No table to drop");
+        return false;
+      }
       bool ret = execute_drop_table(tables, root, nb_tables);
       if (ret) {
         nb_tables -= 1;
       }
       return ret;
       break;
+    case DELETE:
+      return execute_delete_from_table(tables, root);
+      break;
+    case UPDATE:
+      return execute_update_table(tables, root);
+      break;
     default:
-      runtime_error("Request %s not yet implemented", root->value);
+      runtime_error("Request %s cannot be ran", root->value);
       return false;
       break;
   }
@@ -933,24 +1196,44 @@ int main(void) {
   }
 
   // clang-format off
-  char* request_create = "CREATE TABLE \"to_drop\" (\"a\" int pk, \"b\" int, \"c\" varchar ( 32 ) )";
+  char* request_create_1 = "CREATE TABLE \"to_drop\" (\"a\" int pk, \"b\" int, \"c\" varchar ( 32 ) )";
   char* request_create_2 = "CREATE TABLE \"user\" (\"a\" int pk, \"b\" int, \"c\" varchar ( 32 ) )";
-  char* request_insert = "INSERT INTO \"user\" (123, 456, 'abc')";
+  char* request_insert_1 = "INSERT INTO \"user\" (123, 456, 'abc')";
   char* request_insert_2 = "INSERT INTO \"user\" (789, 123, 'defgh')";
   char* request_insert_3 = "INSERT INTO \"user\" (789, 333, 'xyz')";
+  char* request_insert_4 = "INSERT INTO \"user\" (102, 123, 'tuv')";
   /* char* request_select = "SELECT \"b\", \"c\", \"a\"  FROM \"user\" WHERE ( \"c\" = 'abc' )"; */
-  char* request_select = "SELECT \"b\", \"c\", \"a\"  FROM \"user\" WHERE (( \"c\" = 'abc' ) OR ( \"a\" = 789 ))";
-  char* request_drop = "DROP TABLE \"to_drop\"";
+  char* request_select_1 = "SELECT \"b\", \"c\", \"a\"  FROM \"user\" WHERE (( \"c\" = 'abc' ) OR ( \"b\" = 123 ))";
+  char* request_drop     = "DROP TABLE \"to_drop\"";
+  char* request_delete_1 = "DELETE FROM \"user\" WHERE ( \"b\" = 123 )";
+  char* request_delete_2 = "DELETE FROM \"user\"";
+  char* request_select_2 = "SELECT \"b\", \"c\", \"a\"  FROM \"user\" WHERE (\"a\" = 123 )";
+  char* request_select_3 = "SELECT \"b\", \"c\", \"a\"  FROM \"user\"";
+  char* request_update_1 = "UPDATE  \"user\" SET \"a\" = 999, \"b\" = 3  WHERE (\"a\" = 123)";
+  char* request_update_2 = "UPDATE  \"user\" SET \"a\" = 999  WHERE (\"a\" = 789)";
   // clang-format on
 
-  assert(execute_request(request_create));
+  assert(execute_request(request_create_1));
   assert(execute_request(request_create_2));
-  assert(execute_request(request_insert));
+  assert(execute_request(request_insert_1));
   assert(execute_request(request_insert_2));
   assert(!execute_request(request_insert_3));  // duplicate primary key
-  assert(execute_request(request_select));
+  assert(execute_request(request_insert_4));
   assert(execute_request(request_drop));
   assert(!execute_request(request_drop));  // already dropped
+  assert(execute_request(request_select_1));
+  assert(execute_request(request_delete_1));
+  assert(execute_request(request_select_1));
+  assert(execute_request(request_delete_2));
+  assert(execute_request(request_select_2));
+  assert(execute_request(request_insert_1));
+  assert(execute_request(request_insert_2));
+  assert(execute_request(request_insert_4));
+  assert(execute_request(request_select_3));
+  assert(execute_request(request_update_1));
+  assert(execute_request(request_select_3));
+  assert(!execute_request(request_update_2));  // duplicate primary key
+  assert(execute_request(request_select_3));
 
   return 0;
 }
