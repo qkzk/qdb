@@ -699,6 +699,7 @@ bool keep_row(table_data* table,
 bool execute_select_from_table(table_data** tables,
                                size_t nb_tables,
                                ast_node* root) {
+  print_ast(root);
   if (root->kind != SELECT) {
     runtime_error("Expected a select node");
     return false;
@@ -721,20 +722,47 @@ bool execute_select_from_table(table_data** tables,
 
   char* projection_colnames[table->schema->nb_attr];
   ast_node* col = n_tablename->left;
+  bool add_all = (col->kind == ALL_COLS);
+  // check if col has the right attribute
+  if (!add_all && col->kind != COLNAME) {
+    runtime_error("Expected a projection node, got %s", col->value);
+    return false;
+  }
 
   size_t nb_projection = 0;
 
-  for (; nb_projection < table->schema->nb_attr; nb_projection++) {
-    if (col == NULL) {
-      break;
+  if (add_all) {
+    // copy all column names
+    for (size_t index_col = 0; index_col < table->schema->nb_attr;
+         index_col++) {
+      // TODO DRY refactor with other branch
+      char* colname = table->schema->descs[index_col]->name;
+      size_t len_colname = strlen(colname);
+      projection_colnames[nb_projection] =
+          (char*)malloc(sizeof(char) * (len_colname + 1));
+      assert(projection_colnames[nb_projection] != NULL);
+      strncpy(projection_colnames[nb_projection], colname, len_colname);
+      projection_colnames[nb_projection][len_colname] = '\0';
+      nb_projection++;
     }
-    size_t colname_len = strlen(col->value);
-    projection_colnames[nb_projection] =
-        (char*)malloc(sizeof(char) * (colname_len + 1));
-    assert(projection_colnames[nb_projection] != NULL);
-    strncpy(projection_colnames[nb_projection], col->value, colname_len);
-    projection_colnames[nb_projection][colname_len] = '\0';
-    col = col->left;
+  } else {
+    // copy column names in same order as projection
+    for (; nb_projection < table->schema->nb_attr; nb_projection++) {
+      if (col == NULL) {
+        break;
+      }
+      if (col->kind != COLNAME) {
+        runtime_error("Expected a COLNAME got %s", col->value);
+        return false;
+      }
+      size_t colname_len = strlen(col->value);
+      projection_colnames[nb_projection] =
+          (char*)malloc(sizeof(char) * (colname_len + 1));
+      assert(projection_colnames[nb_projection] != NULL);
+      strncpy(projection_colnames[nb_projection], col->value, colname_len);
+      projection_colnames[nb_projection][colname_len] = '\0';
+      col = col->left;
+    }
   }
 
   // search in the schema for sizes, offsets & kinds
@@ -1375,8 +1403,9 @@ int example_executer(void) {
   char* request_delete_1 = "DELETE FROM \"user\" WHERE ( \"b\" = 123 );";
   char* request_delete_2 = "DELETE FROM \"user\";";
   char* request_select_2 = "SELECT \"b\", \"c\", \"a\"  FROM \"user\" WHERE (\"a\" = 123 );";
-  char* request_select_4 = "SELECT \"a\"  FROM \"aze\";";
   char* request_select_3 = "SELECT \"b\", \"c\", \"a\"  FROM \"user\";";
+  char* request_select_4 = "SELECT \"a\"  FROM \"aze\";";
+  char* request_select_5 = "SELECT *  FROM \"user\";";
   char* request_update_1 = "UPDATE  \"user\" SET \"a\" = 999, \"b\" = 3  WHERE (\"a\" = 123);";
   char* request_update_2 = "update  \"user\" SET \"a\" = 999  WHERE (\"a\" = 789);";
   // clang-format on
@@ -1386,6 +1415,7 @@ int example_executer(void) {
   assert(execute_request(request_select_1));
   assert(execute_request(request_create_3));
   assert(execute_request(request_select_4));
+  assert(execute_request(request_select_5));
   return 0;
 
   assert(execute_request(request_insert_1));

@@ -15,6 +15,7 @@ typedef enum Ast_kind {
   TABLENAME,   // "users"
   COLNAME,     // "name"
   COLNAME_PK,  // "name..."
+  ALL_COLS,    // *
   CONDITION,   // "a" >= 2 AND "b" <= 3
   REL,         // "a" >= 2
   COMP,        // >=

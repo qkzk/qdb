@@ -47,6 +47,7 @@ typedef enum Ast_kind {
   TABLENAME,   // "users"
   COLNAME,     // "name"
   COLNAME_PK,  // "name..."
+  ALL_COLS,    // *
   CONDITION,   // "a" >= 2 AND "b" <= 3
   REL,         // "a" >= 2
   COMP,        // >=
@@ -70,6 +71,7 @@ const char* ast_kind_names[] = {
     [TABLENAME] = "TABLENAME",
     [COLNAME] = "COLNAME",
     [COLNAME_PK] = "COLNAME_PK",
+    [ALL_COLS] = "ALL_COLS",
     [CONDITION] = "CONDITION",
     [REL] = "REL",
     [COMP] = "COMP",
@@ -1017,6 +1019,13 @@ ast_node* parse_select(token** tokens, size_t* nb_tokens) {
   ast_node* next;
   // while identifier loop
   while (true) {
+    if (is_token_operator(*tokens, "*")) {
+      next = create_node_root(ALL_COLS, "*");
+      tokens += 1;
+      *nb_tokens -= 1;
+      current->left = next;
+      break;
+    }
     next = parse_colname(tokens, nb_tokens);
     current->left = next;
     current = next;
