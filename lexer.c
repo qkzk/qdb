@@ -16,6 +16,7 @@ typedef enum Token_kind {
   RIGHT_PAREN,     // )
   PUNCTUATION,     // , .
   END,             // ;
+  COMMENT,         // //
   UNKNOWN,         //
 } token_kind;
 
@@ -41,6 +42,8 @@ char* repr_kind(token_kind kind) {
       return "punctuation";
     case END:
       return "end";
+    case COMMENT:
+      return "comment";
     case UNKNOWN:
       return "unknown";
     default:
@@ -228,6 +231,17 @@ bool is_end(char* word, size_t len) {
   return word[0] == ';';
 }
 
+bool is_comment(char* word, size_t len) {
+  if (len != 1) {
+    return false;
+  }
+  bool ret = word[0] == '#';
+  if (ret) {
+    printf("found comment : %c\n", word[0]);
+  }
+  return ret;
+}
+
 typedef struct Token {
   char* value;
   size_t len;
@@ -328,6 +342,11 @@ token* get_next_token(char* line, size_t* position, size_t line_len) {
       tok = new_token(line + *position, i, kind);
       break;
     }
+    if (is_comment(line + *position, i + 1)) {
+      kind = COMMENT;
+      tok = new_token(line + *position, i, kind);
+      break;
+    }
     i++;
   }
   *position += i + 1;
@@ -356,15 +375,18 @@ size_t lexer(char* line, token** tokens) {
       tokens = NULL;
       return 0;
     }
+    if (tok->kind == COMMENT) {
+      break;
+    }
     tokens[nb_tokens++] = tok;
   }
   if (nb_tokens == 0) {
-    perror("Empty request");
+    perror("Syntax Error: Empty request");
     tokens = NULL;
     return 0;
   }
   if (tokens[nb_tokens - 1]->kind != END) {
-    perror("Requests must end with ;");
+    perror("Syntax Error: Requests must end with ;");
     tokens = NULL;
     return 0;
   }

@@ -651,12 +651,13 @@ ast_node* parse_create(token** tokens, size_t* nb_tokens) {
   // do we have other columns ?
   if (expect(RIGHT_PAREN, *tokens)) {
     // no other column, advance
-    set_leaf(first_col);
+    set_leaf(first_col->left);
     /* print_ast(root); */
     if (*nb_tokens != 1) {
       parser_error("too much tokens left expected 1 got %d", *nb_tokens);
       return NULL;
     }
+    table->i_value = nb_attr;
     return root;
   }
   if (!is_token_punctuation(*tokens, ",")) {
@@ -714,6 +715,7 @@ ast_node* parse_create(token** tokens, size_t* nb_tokens) {
   }
   set_leaf(current);
   table->i_value = nb_attr;
+  printf("create table : node table i_value %ld\n", table->i_value);
 
   return root;
 }
@@ -1039,9 +1041,9 @@ ast_node* parse_select(token** tokens, size_t* nb_tokens) {
   ast_node* tablename_right = parse_tablename(tokens, nb_tokens);
   root->right = tablename_right;
   tablename_left->value =
-      (char*)malloc(sizeof(char) * strlen(tablename_right->value));
+      (char*)malloc(sizeof(char) * (strlen(tablename_right->value) + 1));
   strncpy(tablename_left->value, tablename_right->value,
-          strlen(tablename_right->value));
+          (strlen(tablename_right->value) + 1));
   /* print_ast(root); */
   if (*nb_tokens <= 1) {
     root->right = NULL;

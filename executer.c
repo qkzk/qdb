@@ -1364,6 +1364,7 @@ int example_executer(void) {
   // clang-format off
   char* request_create_1 = "CREATE TABLE \"to_drop\" (\"a\" int pk, \"b\" int, \"c\" varchar ( 32 ) );";
   char* request_create_2 = "CREATE TABLE \"user\" (\"a\" int pk, \"b\" int, \"c\" varchar ( 32 ) );";
+  char* request_create_3 = "CREATE TABLE \"aze\" (\"a\" int pk );";
   char* request_insert_1 = "INSERT INTO \"user\" (123, 456, 'abc');";
   char* request_insert_2 = "INSERT INTO \"user\" (789, 123, 'defgh');";
   char* request_insert_3 = "INSERT INTO \"user\" (789, 333, 'xyz');";
@@ -1374,6 +1375,7 @@ int example_executer(void) {
   char* request_delete_1 = "DELETE FROM \"user\" WHERE ( \"b\" = 123 );";
   char* request_delete_2 = "DELETE FROM \"user\";";
   char* request_select_2 = "SELECT \"b\", \"c\", \"a\"  FROM \"user\" WHERE (\"a\" = 123 );";
+  char* request_select_4 = "SELECT \"a\"  FROM \"aze\";";
   char* request_select_3 = "SELECT \"b\", \"c\", \"a\"  FROM \"user\";";
   char* request_update_1 = "UPDATE  \"user\" SET \"a\" = 999, \"b\" = 3  WHERE (\"a\" = 123);";
   char* request_update_2 = "update  \"user\" SET \"a\" = 999  WHERE (\"a\" = 789);";
@@ -1381,6 +1383,11 @@ int example_executer(void) {
 
   assert(execute_request(request_create_1));
   assert(execute_request(request_create_2));
+  assert(execute_request(request_select_1));
+  assert(execute_request(request_create_3));
+  assert(execute_request(request_select_4));
+  return 0;
+
   assert(execute_request(request_insert_1));
   assert(execute_request(request_insert_2));
   assert(!execute_request(request_insert_3));  // duplicate primary key

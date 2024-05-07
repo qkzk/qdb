@@ -13,6 +13,7 @@ typedef enum Token_kind {
   RIGHT_PAREN,     // )
   PUNCTUATION,     // , .
   END,             // ; 
+  COMMENT,         // //
   UNKNOWN,         //
 } token_kind;
 
