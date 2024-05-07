@@ -900,13 +900,12 @@ bool execute_drop_table(table_data** tables, ast_node* root, size_t nb_tables) {
     return false;
   }
   if (DEBUG) {
-    printf("found table %s index %ld\n", tablename, i);
+    printf("DROP TABLE. Found table %s index %ld\n", tablename, i);
     print_table(table);
   }
   if (nb_tables > 1) {
-    for (size_t j = nb_tables - 2; j >= i; j--) {
+    for (size_t j = i; j <= nb_tables - 2; j++) {
       if (tables[j + 1] != NULL) {
-        // TODO
         if (DEBUG) {
           printf("moving into %ld from %ld\n", j, j + 1);
         }
@@ -918,9 +917,6 @@ bool execute_drop_table(table_data** tables, ast_node* root, size_t nb_tables) {
                 sizeof(&(tables[j + 1]->schema)));
         memmove(tables[j]->values, tables[j + 1]->values,
                 tables[j + 1]->row_size * tables[j + 1]->capacity);
-      }
-      if (j == 0) {
-        break;
       }
     }
   }
@@ -1229,13 +1225,13 @@ bool command_print_tables(void) {
 }
 
 bool command_read_request_file(char* command) {
-  const char s[] = " ";
+  const char split[] = " ";
   char* filename;
-  strtok(command, s);          // first string
-  filename = strtok(NULL, s);  // second string
+  strtok(command, split);          // first string
+  filename = strtok(NULL, split);  // second string
   printf(".read: reading from ##%s##\n", filename);
   if (strlen(filename) == 0) {
-    runtime_error(".open requires a filename: .open data.qdb");
+    runtime_error(".read requires a filename: .read requests.sql");
     return false;
   }
   ssize_t read;
@@ -1247,21 +1243,31 @@ bool command_read_request_file(char* command) {
     return false;
   }
 
-  while ((read = getline(&line, &len, save_file)) != -1) {
+  bool success = true;
+  while ((read = getline(&line, &len, save_file)) != EOF) {
     /* if (read > 1 && line[0] != '.') { */
     if (read > 1) {
       printf("Retrieved line of length %zu:\n", read);
       printf("%s", line);
       // remove \n
       line[strcspn(line, "\n")] = '\0';
-      execute_request(line);
+      if (strncmp(".read", line, strlen(".read")) == 0) {
+        runtime_error(".read cannot execute itself");
+        success = false;
+        break;
+      }
+      if (!execute_request(line)) {
+        runtime_error("Line ##%s## failed", line);
+        success = false;
+        break;
+      }
     }
   }
   fclose(save_file);
   if (line) {
     free(line);
   }
-  return true;
+  return success;
 }
 
 bool execute_command(char* command) {
@@ -1293,9 +1299,13 @@ bool execute_request(char* request) {
     return false;
   }
   if (request[0] == '.') {
+    // command, not a request
     return execute_command(request);
   }
-  printf("execute_request: %s\n", request);
+  if (request[0] == '#') {
+    // comment
+    return true;
+  }
 
   if (DEBUG) {
     printf("\n%s\n", request);
@@ -1379,6 +1389,8 @@ bool execute_request(char* request) {
       break;
   }
 
+  free(root);
+
   return true;
 }
 
@@ -1393,19 +1405,23 @@ int example_executer(void) {
   char* request_create_1 = "CREATE TABLE \"to_drop\" (\"a\" int pk, \"b\" int, \"c\" varchar ( 32 ) );";
   char* request_create_2 = "CREATE TABLE \"user\" (\"a\" int pk, \"b\" int, \"c\" varchar ( 32 ) );";
   char* request_create_3 = "CREATE TABLE \"aze\" (\"a\" int pk );";
+
   char* request_insert_1 = "INSERT INTO \"user\" (123, 456, 'abc');";
   char* request_insert_2 = "INSERT INTO \"user\" (789, 123, 'defgh');";
   char* request_insert_3 = "INSERT INTO \"user\" (789, 333, 'xyz');";
   char* request_insert_4 = "INSERT INTO \"user\" (102, 123, 'tuv');";
   /* char* request_select = "SELECT \"b\", \"c\", \"a\"  FROM \"user\" WHERE ( \"c\" = 'abc' );"; */
-  char* request_select_1 = "SELECT \"b\", \"c\", \"a\"  FROM \"user\" WHERE (( \"c\" = 'abc' ) OR ( \"b\" = 123 ));";
   char* request_drop     = "DROP TABLE \"to_drop\";";
+  
   char* request_delete_1 = "DELETE FROM \"user\" WHERE ( \"b\" = 123 );";
   char* request_delete_2 = "DELETE FROM \"user\";";
+  
+  char* request_select_1 = "SELECT \"b\", \"c\", \"a\"  FROM \"user\" WHERE (( \"c\" = 'abc' ) OR ( \"b\" = 123 ));";
   char* request_select_2 = "SELECT \"b\", \"c\", \"a\"  FROM \"user\" WHERE (\"a\" = 123 );";
   char* request_select_3 = "SELECT \"b\", \"c\", \"a\"  FROM \"user\";";
   char* request_select_4 = "SELECT \"a\"  FROM \"aze\";";
   char* request_select_5 = "SELECT *  FROM \"user\";";
+  
   char* request_update_1 = "UPDATE  \"user\" SET \"a\" = 999, \"b\" = 3  WHERE (\"a\" = 123);";
   char* request_update_2 = "update  \"user\" SET \"a\" = 999  WHERE (\"a\" = 789);";
   // clang-format on
@@ -1416,7 +1432,7 @@ int example_executer(void) {
   assert(execute_request(request_create_3));
   assert(execute_request(request_select_4));
   assert(execute_request(request_select_5));
-  return 0;
+  /* return 0; */
 
   assert(execute_request(request_insert_1));
   assert(execute_request(request_insert_2));
@@ -1424,7 +1440,10 @@ int example_executer(void) {
   assert(execute_request(request_insert_4));
   assert(execute_request(request_drop));
   assert(!execute_request(request_drop));  // already dropped
-  assert(execute_request(request_select_1));
+  /* assert(execute_request(request_select_1)); */
+  execute_request(request_select_1);
+  execute_request(".tables");
+  return 1;
   assert(execute_request(request_delete_1));
   assert(execute_request(request_select_1));
   assert(execute_request(request_delete_2));

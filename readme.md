@@ -164,8 +164,8 @@ octdigit           ::=     '0' | octdigit-excl-zero.
 10. FIX: create table with only 1 col segfautls
 11. FIX: some tables can't be found in repl... (wrong copying of node value...)
 12. select \* from table
+13. BUG. drop moves the tables in wrong order. Must run through the table in ascending order and move right to left.
 
 ## BUGS & TODO
 
 1. .save & .open [binn](https://github.com/liteserver/binn?tab=readme-ov-file#usage-example)
-2. BUG. drop moves the tables in wrong place. Hard to reproduce. Creates 3 tables, drop 2nd one, select from first : can't find table.
