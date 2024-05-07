@@ -249,8 +249,10 @@ void print_table(table_data* data) {
 
 #define MAXTABLES 128
 
-table_data* find_table_from_name(table_data** tables, char* name) {
-  for (size_t i = 0; i < MAXTABLES; i++) {
+table_data* find_table_from_name(table_data** tables,
+                                 char* name,
+                                 size_t nb_tables) {
+  for (size_t i = 0; i < nb_tables; i++) {
     if (tables[i] == NULL) {
       break;
     }
@@ -262,6 +264,14 @@ table_data* find_table_from_name(table_data** tables, char* name) {
   }
 
   return NULL;
+}
+
+bool new_tablename_is_unused(table_data** tables,
+                             size_t nb_tables,
+                             table_data* created_table) {
+  printf("is used %s\n", created_table->schema->name);
+  return find_table_from_name(tables, created_table->schema->name, nb_tables) ==
+         NULL;
 }
 
 typedef struct ExtractedValue {
@@ -364,7 +374,9 @@ extracted_value** get_row_values(table_data* table,
   return values;
 }
 
-bool execute_insert_into_table(table_data** tables, ast_node* root) {
+bool execute_insert_into_table(table_data** tables,
+                               size_t nb_tables,
+                               ast_node* root) {
   if (root->kind != INSERT) {
     runtime_error("Expected an insert node");
     return false;
@@ -376,7 +388,7 @@ bool execute_insert_into_table(table_data** tables, ast_node* root) {
   }
   char* tablename = n_tablename->value;
 
-  table_data* table = find_table_from_name(tables, tablename);
+  table_data* table = find_table_from_name(tables, tablename, nb_tables);
   if (table == NULL) {
     runtime_error("Unknown table %s", tablename);
     return false;
@@ -683,7 +695,9 @@ bool keep_row(table_data* table,
   return run_where(right->left->left, nb_attr, values, error);
 }
 
-bool execute_select_from_table(table_data** tables, ast_node* root) {
+bool execute_select_from_table(table_data** tables,
+                               size_t nb_tables,
+                               ast_node* root) {
   if (root->kind != SELECT) {
     runtime_error("Expected a select node");
     return false;
@@ -695,7 +709,7 @@ bool execute_select_from_table(table_data** tables, ast_node* root) {
   }
   char* tablename = n_tablename->value;
 
-  table_data* table = find_table_from_name(tables, tablename);
+  table_data* table = find_table_from_name(tables, tablename, nb_tables);
   if (DEBUG) {
     print_table(table);
   }
@@ -878,7 +892,9 @@ bool execute_drop_table(table_data** tables, ast_node* root, size_t nb_tables) {
   return true;
 }
 
-bool execute_delete_from_table(table_data** tables, ast_node* root) {
+bool execute_delete_from_table(table_data** tables,
+                               size_t nb_tables,
+                               ast_node* root) {
   if (DEBUG) {
     print_ast(root);
   }
@@ -893,7 +909,7 @@ bool execute_delete_from_table(table_data** tables, ast_node* root) {
   }
   char* tablename = n_tablename->value;
 
-  table_data* table = find_table_from_name(tables, tablename);
+  table_data* table = find_table_from_name(tables, tablename, nb_tables);
   if (table == NULL) {
     runtime_error("Unknown table %s", tablename);
     return false;
@@ -950,7 +966,9 @@ bool execute_delete_from_table(table_data** tables, ast_node* root) {
   return true;
 }
 
-bool execute_update_table(table_data** tables, ast_node* root) {
+bool execute_update_table(table_data** tables,
+                          size_t nb_tables,
+                          ast_node* root) {
   if (DEBUG) {
     print_ast(root);
   }
@@ -966,7 +984,7 @@ bool execute_update_table(table_data** tables, ast_node* root) {
   }
   char* tablename = n_tablename->value;
 
-  table_data* table = find_table_from_name(tables, tablename);
+  table_data* table = find_table_from_name(tables, tablename, nb_tables);
   if (DEBUG) {
     print_table(table);
   }
@@ -1107,8 +1125,9 @@ bool execute_update_table(table_data** tables, ast_node* root) {
 
 static table_data** tables;
 static size_t nb_tables;
+bool execute_request(char* request);
 
-bool save_tables(char* command) {
+bool command_save_tables(char* command) {
   runtime_error(".save : not yet implemented");
   return false;
 
@@ -1134,7 +1153,7 @@ bool save_tables(char* command) {
   return true;
 }
 
-bool open_tables(char* command) {
+bool command_open_tables(char* command) {
   runtime_error(".open : not yet implemented");
   return false;
 
@@ -1164,6 +1183,52 @@ bool open_tables(char* command) {
   return true;
 }
 
+bool command_print_tables(void) {
+  if (nb_tables == 0) {
+    printf("No table set.\n");
+  }
+  for (size_t index_table = 0; index_table < nb_tables; index_table++) {
+    print_table(tables[index_table]);
+  }
+  return true;
+}
+
+bool command_read_request_file(char* command) {
+  const char s[] = " ";
+  char* filename;
+  strtok(command, s);          // first string
+  filename = strtok(NULL, s);  // second string
+  printf(".read: reading from ##%s##\n", filename);
+  if (strlen(filename) == 0) {
+    runtime_error(".open requires a filename: .open data.qdb");
+    return false;
+  }
+  ssize_t read;
+  char* line = NULL;
+  size_t len = 0;
+  FILE* save_file = fopen(filename, "rb");
+  if (save_file == NULL) {
+    printf("Error opening %s\n", filename);
+    return false;
+  }
+
+  while ((read = getline(&line, &len, save_file)) != -1) {
+    /* if (read > 1 && line[0] != '.') { */
+    if (read > 1) {
+      printf("Retrieved line of length %zu:\n", read);
+      printf("%s", line);
+      // remove \n
+      line[strcspn(line, "\n")] = '\0';
+      execute_request(line);
+    }
+  }
+  fclose(save_file);
+  if (line) {
+    free(line);
+  }
+  return true;
+}
+
 bool execute_command(char* command) {
   if (DEBUG) {
     printf("Command: %s\n", command);
@@ -1171,16 +1236,13 @@ bool execute_command(char* command) {
   if (strcmp(command, ".exit") == 0) {
     exit(0);
   } else if (strcmp(command, ".tables") == 0) {
-    if (nb_tables == 0) {
-      printf("No table set.\n");
-    }
-    for (size_t index_table = 0; index_table < nb_tables; index_table++) {
-      print_table(tables[index_table]);
-    }
+    return command_print_tables();
   } else if (strncmp(command, ".save", strlen(".save")) == 0) {
-    return save_tables(command);
-  } else if (strncmp(command, ".open", strlen(".save")) == 0) {
-    return open_tables(command);
+    return command_save_tables(command);
+  } else if (strncmp(command, ".open", strlen(".open")) == 0) {
+    return command_open_tables(command);
+  } else if (strncmp(command, ".read", strlen(".read")) == 0) {
+    return command_read_request_file(command);
   } else {
     printf("Unknown command %s\n", command);
   }
@@ -1232,13 +1294,18 @@ bool execute_request(char* request) {
   if (DEBUG) {
     print_ast(root);
   }
-  table_data* data_from_ast;
+  table_data* created_table;
   switch (root->kind) {
     case CREATE:
-      data_from_ast = execute_create_table(root);
-      if (data_from_ast != NULL) {
-        tables[nb_tables] = data_from_ast;
-        nb_tables++;
+      created_table = execute_create_table(root);
+      if (created_table != NULL) {
+        if (new_tablename_is_unused(tables, nb_tables, created_table)) {
+          tables[nb_tables] = created_table;
+          nb_tables++;
+        } else {
+          runtime_error("Table %s already exists");
+          return false;
+        }
         if (DEBUG) {
           printf("done creating table\n");
         }
@@ -1249,10 +1316,10 @@ bool execute_request(char* request) {
       }
       break;
     case INSERT:
-      return execute_insert_into_table(tables, root);
+      return execute_insert_into_table(tables, nb_tables, root);
       break;
     case SELECT:
-      return execute_select_from_table(tables, root);
+      return execute_select_from_table(tables, nb_tables, root);
       break;
     case DROP:
       if (nb_tables == 0) {
@@ -1266,10 +1333,10 @@ bool execute_request(char* request) {
       return ret;
       break;
     case DELETE:
-      return execute_delete_from_table(tables, root);
+      return execute_delete_from_table(tables, nb_tables, root);
       break;
     case UPDATE:
-      return execute_update_table(tables, root);
+      return execute_update_table(tables, nb_tables, root);
       break;
     default:
       runtime_error("Request %s cannot be ran", root->value);

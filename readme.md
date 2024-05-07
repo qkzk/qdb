@@ -108,11 +108,11 @@ conditions
 statement          ::=     select-clause | insert-clause | update-clause | delete-clause | create-clause | drop-clause.
 
 
-select-clause      ::=     'SELECT', projection, 'FROM', tablename ( 'WHERE' condition ).
-insert-clause      ::=     'INSERT', 'INTO', tablename, '(', literal (',' literal)*, ')'.
-update-clause      ::=     'UPDATE', tablename, 'SET', colname, '=', literal (',' colname = literal)* ( 'WHERE', condition ).
-delete-clause      ::=     'DELETE', 'FROM', tablename, ( 'WHERE', condition ).
-create-clause      ::=     'CREATE', 'TABLE', tablename, '(', pk-description, (',' normal-col-desc )* ')'.
+select-clause      ::=     'SELECT', projection, 'FROM', tablename ( 'WHERE' condition );.
+insert-clause      ::=     'INSERT', 'INTO', tablename, '(', literal (',' literal)*, ')';.
+update-clause      ::=     'UPDATE', tablename, 'SET', colname, '=', literal (',' colname = literal)* ( 'WHERE', condition );.
+delete-clause      ::=     'DELETE', 'FROM', tablename, ( 'WHERE', condition );.
+create-clause      ::=     'CREATE', 'TABLE', tablename, '(', pk-description, (',' normal-col-desc )* ')';.
 drop-clause        ::=     'DROP', 'TABLE', tablename.
 
 projection         ::=     colname (',' colname)* ) | *.
@@ -155,10 +155,13 @@ octdigit           ::=     '0' | octdigit-excl-zero.
 1. compare tokens without case
 2. request should end with ;
 3. repl navigation up, down (in memory only)
+4. table name should be unique
+5. .read requests from file
+6. tokens keyword should be converted to uppercase
 
 ## BUGS & TODO
 
-2. .read requests from file
-3. .save & .open
-4. table name should be unique
-5. tokens keyword should be converted to uppercase
+1. .save & .open [binn](https://github.com/liteserver/binn?tab=readme-ov-file#usage-example)
+2. selecting a wrong table segfault
+3. wrong colname for primary key when lenght 1 ?
+4. comments

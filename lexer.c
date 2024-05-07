@@ -237,13 +237,17 @@ typedef struct Token {
 token* new_token(char* value, size_t len, token_kind kind) {
   token* t = (token*)malloc(sizeof(token));
   assert(t != NULL);
-  char* v = (char*)malloc(sizeof(char) * (len + 2));
-  assert(v != NULL);
-  t->value = v;
+  t->value = (char*)malloc(sizeof(char) * (len + 2));
+  assert(t->value != NULL);
   strncpy(t->value, value, len + 1);
   t->value[len + 1] = '\0';
   t->len = len + 1;
   t->kind = kind;
+  if (t->kind == KEYWORD) {
+    for (size_t i = 0; i < t->len; i++) {
+      t->value[i] = toupper(t->value[i]);
+    }
+  }
   return t;
 }
 
