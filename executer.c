@@ -757,7 +757,7 @@ bool execute_select_from_table(table_data** tables,
       offset += table->schema->descs[j]->size;
     }
     if (!found) {
-      runtime_error("Couldn't find COLNAME %s in table", colname);
+      runtime_error("Couldn't find COLNAME %s in table %s", colname, tablename);
       return false;
     }
     offsets[i] = offset;

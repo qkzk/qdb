@@ -159,9 +159,9 @@ octdigit           ::=     '0' | octdigit-excl-zero.
 5. .read requests from file
 6. tokens keyword should be converted to uppercase
 7. wrong colname for primary key when lenght 1
+8. selecting a wrong table segfault
 
 ## BUGS & TODO
 
 1. .save & .open [binn](https://github.com/liteserver/binn?tab=readme-ov-file#usage-example)
-2. selecting a wrong table segfault
-3. comments
+2. comments
