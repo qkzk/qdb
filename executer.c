@@ -140,6 +140,7 @@ table_desc* example_create_table_desc(void) {
 }
 
 table_desc* create_table_desc_from_ast(ast_node* root) {
+  print_ast(root);
   if (root->kind != CREATE) {
     runtime_error("Expected a create node");
     return NULL;
@@ -180,13 +181,13 @@ table_desc* create_table_desc_from_ast(ast_node* root) {
       return NULL;
     }
     switch (type->value[0]) {
-      case 'i':
+      case 'I':
         desc = desc_int(colname->value);
         break;
-      case 'f':
+      case 'F':
         desc = desc_float(colname->value);
         break;
-      case 'v':
+      case 'V':
         varchar_size = type->left;
         if (varchar_size == NULL) {
           runtime_error("Expected an int node after varchar");
@@ -745,13 +746,19 @@ bool execute_select_from_table(table_data** tables,
   for (size_t i = 0; i < nb_projection; i++) {
     char* colname = projection_colnames[i];
     size_t offset = 0;
+    bool found = false;
     for (size_t j = 0; j < table->schema->nb_attr; j++) {
       if (strcmp(colname, table->schema->descs[j]->name) == 0) {
         sizes[i] = table->schema->descs[j]->size;
         kinds[i] = table->schema->descs[j]->desc;
+        found = true;
         break;
       }
       offset += table->schema->descs[j]->size;
+    }
+    if (!found) {
+      runtime_error("Couldn't find COLNAME %s in table", colname);
+      return false;
     }
     offsets[i] = offset;
   }

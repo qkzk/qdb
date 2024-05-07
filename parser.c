@@ -568,8 +568,9 @@ ast_node* parse_primary_column(token** tokens, size_t* nb_tokens) {
   if (!expect(IDENTIFIER, *tokens)) {
     parser_error("Expected a column name got %s", (*tokens)->value);
   }
-  col->value = (char*)malloc(sizeof(char) * (*tokens)->len);
+  col->value = (char*)malloc(sizeof(char) * ((*tokens)->len + 1));
   strncpy(col->value, (*tokens)->value, (*tokens)->len);
+  col->value[(*tokens)->len] = '\0';
   *nb_tokens -= 1;
   return col;
 }
