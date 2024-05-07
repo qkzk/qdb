@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <ctype.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,6 +15,7 @@ typedef enum Token_kind {
   LEFT_PAREN,      // (
   RIGHT_PAREN,     // )
   PUNCTUATION,     // , .
+  END,             // ;
   UNKNOWN,         //
 } token_kind;
 
@@ -37,6 +39,8 @@ char* repr_kind(token_kind kind) {
       return "right_paren";
     case PUNCTUATION:
       return "punctuation";
+    case END:
+      return "end";
     case UNKNOWN:
       return "unknown";
     default:
@@ -67,6 +71,15 @@ const char *skeywords[NBKEYWORDS] = {
 };
 // clang-format on
 
+int strncicmp(char const* a, char const* b, size_t n) {
+  for (size_t i = 0; i < n; i++, a++, b++) {
+    int d = tolower((unsigned char)*a) - tolower((unsigned char)*b);
+    if (d != 0 || !*a)
+      return d;
+  }
+  return 0;
+}
+
 bool is_keyword(char* word, size_t len) {
   if (len < 2 || len > 7) {
     return false;
@@ -74,7 +87,7 @@ bool is_keyword(char* word, size_t len) {
 
   for (int i = 0; i < NBKEYWORDS; i++) {
     size_t len_keyword = strlen(skeywords[i]);
-    if (len_keyword == len && strncmp(word, skeywords[i], len_keyword) == 0) {
+    if (len_keyword == len && strncicmp(word, skeywords[i], len_keyword) == 0) {
       return true;
     }
   }
@@ -185,7 +198,6 @@ bool is_punctuation(char* word, size_t len) {
   }
   switch (word[0]) {
     case ',':
-    case ';':
     case '.':
       return true;
       break;
@@ -207,6 +219,13 @@ bool is_right_paren(char* word, size_t len) {
     return false;
   }
   return word[0] == ')';
+}
+
+bool is_end(char* word, size_t len) {
+  if (len != 1) {
+    return false;
+  }
+  return word[0] == ';';
 }
 
 typedef struct Token {
@@ -300,6 +319,11 @@ token* get_next_token(char* line, size_t* position, size_t line_len) {
       tok = new_token(line + *position, i, kind);
       break;
     }
+    if (is_end(line + *position, i + 1)) {
+      kind = END;
+      tok = new_token(line + *position, i, kind);
+      break;
+    }
     i++;
   }
   *position += i + 1;
@@ -325,11 +349,22 @@ size_t lexer(char* line, token** tokens) {
     token* tok = get_next_token(line, &position, line_len);
     if (tok == NULL) {
       syntax_error(line, position);
+      tokens = NULL;
       return 0;
     }
     tokens[nb_tokens++] = tok;
   }
-  return nb_tokens;
+  if (nb_tokens == 0) {
+    perror("Empty request");
+    tokens = NULL;
+    return 0;
+  }
+  if (tokens[nb_tokens - 1]->kind != END) {
+    perror("Requests must end with ;");
+    tokens = NULL;
+    return 0;
+  }
+  return nb_tokens - 1;
 }
 
 void destroy_tokens(token** tokens) {

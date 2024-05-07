@@ -160,7 +160,7 @@ bool expect(token_kind expected, token* current) {
 }
 
 bool is_keyword_this(token* keyword, char* value) {
-  return strcmp(keyword->value, value) == 0;
+  return strcasecmp(keyword->value, value) == 0;
 }
 
 bool is_token_keyword_something(token* tokens, char* something) {
@@ -364,7 +364,7 @@ ast_node* parse_literal(token** tokens, size_t* nb_tokens) {
 ast_node* parse_drop(token** tokens, size_t* nb_tokens) {
   if (*nb_tokens != 3) {
     parser_error(
-        "Wrong number of tokens for 'drop table \"tablename\"': expected 3 got "
+        "Wrong number of tokens for 'drop table \"tablename\"': expected 4 got "
         "%d",
         *nb_tokens);
     return NULL;
@@ -382,7 +382,8 @@ ast_node* parse_drop(token** tokens, size_t* nb_tokens) {
         if (*nb_tokens == 0) {
           return root;
         } else {
-          parser_error("remaining tokens: ");
+          parser_error("remaining tokens: %ld", &nb_tokens);
+          return NULL;
         }
       }
     }
@@ -574,7 +575,6 @@ ast_node* parse_primary_column(token** tokens, size_t* nb_tokens) {
 }
 
 ast_node* parse_create(token** tokens, size_t* nb_tokens) {
-  printf("create table called\n");
   if (!is_token_keyword_create(*tokens) ||
       !is_keyword_this(*(tokens + 1), "TABLE")) {
     parser_error("Expected CREATE TABLE.");
@@ -1227,38 +1227,38 @@ int example_parser(void) {
   // input[13] = "WHERE ( ( (\"a\" <= 1) OR (\"b\" >= 2) ) AND ( (\"c\" != 3) OR (\"d\" == 4) ))";   // OKAY failure (== isn't a valid token)
   // input[14] = "WHERE ( ( (\"a\" <= 1) OR (\"b\" >= 2) ) AND ( (\"c\" != 3) OR (\"d\" = 4) ))";    // OKAY success
   // drop table clause 
-  input[13] = "DROP TABLE";                                                                       // OKAY failure
-  input[1] = "DROP TABLE \"user\"";                                                              // OKAY success
+  input[13] = "DROP TABLE;";                                                                       // OKAY failure
+  input[1] = "DROP TABLE \"user\";";                                                              // OKAY success
   // create table clause 
-  input[2] = "CREATE TABLE \"user\" (\"a\" int pk )";                                            // OKAY success
-  input[3] = "CREATE TABLE \"user\" (\"a\" int pk, \"b\" float, \"c\" varchar ( 32 ) )";         // OKAY success
-  input[4] = "CREATE TABLE \"user\" (\"a\" varchar(32) pk, \"b\" float, \"c\" varchar ( 32 ) )"; // OKAY success
+  input[2] = "CREATE TABLE \"user\" (\"a\" int pk );";                                            // OKAY success
+  input[3] = "CREATE TABLE \"user\" (\"a\" int pk, \"b\" float, \"c\" varchar ( 32 ) );";         // OKAY success
+  input[4] = "CREATE TABLE \"user\" (\"a\" varchar(32) pk, \"b\" float, \"c\" varchar ( 32 ) );"; // OKAY success
   // delete from table 
-  input[5] = "DELETE FROM \"user\"";                                                             // OKAY success
-  input[6] = "DELETE FROM \"user\" WHERE ( \"a\" = 2 )";                                         // OKAY success
+  input[5] = "DELETE FROM \"user\";";                                                             // OKAY success
+  input[6] = "DELETE FROM \"user\" WHERE ( \"a\" = 2 );";                                         // OKAY success
   
   // select 
-  input[7] = "SELECT \"a\" FROM \"users\" WHERE ( \"a\" = 2 )";                                                                          // OKAY success
-  input[8] = "SELECT \"a\" FROM \"users\"";                                                                                              // OKAY success
-  input[9] = "SELECT \"a\", \"b\"  FROM \"users\"";                                                                                      // OKAY success 
-  input[10] = "SELECT \"a\" FROM \"users\" WHERE ( ( (\"a\" > 1) OR (\"b\" < 2) ) AND ( (\"c\" > 3) OR (\"d\" = 4) ))";                   // OKAY success
-  input[11] = "SELECT \"a\" FROM \"users\" WHERE ( ( (\"a\" <= 1) OR (\"b\" >= 2) ) AND ( (\"c\" != 3) OR (\"d\" = 4) ))";                // OKAY success
-  input[12] = "SELECT \"a\", \"b\", \"c\" FROM \"users\" WHERE ( ( (\"a\" <= 1) OR (\"b\" >= 2) ) AND ( (\"c\" != 3) OR (\"d\" = 4) ))";  // OKAY success
+  input[7] = "SELECT \"a\" FROM \"users\" WHERE ( \"a\" = 2 );";                                                                          // OKAY success
+  input[8] = "SELECT \"a\" FROM \"users\";";                                                                                              // OKAY success
+  input[9] = "SELECT \"a\", \"b\"  FROM \"users\";";                                                                                      // OKAY success 
+  input[10] = "SELECT \"a\" FROM \"users\" WHERE ( ( (\"a\" > 1) OR (\"b\" < 2) ) AND ( (\"c\" > 3) OR (\"d\" = 4) ));";                   // OKAY success
+  input[11] = "SELECT \"a\" FROM \"users\" WHERE ( ( (\"a\" <= 1) OR (\"b\" >= 2) ) AND ( (\"c\" != 3) OR (\"d\" = 4) ));";                // OKAY success
+  input[12] = "SELECT \"a\", \"b\", \"c\" FROM \"users\" WHERE ( ( (\"a\" <= 1) OR (\"b\" >= 2) ) AND ( (\"c\" != 3) OR (\"d\" = 4) ));";  // OKAY success
   
   // update 
-  input[0] = "UPDATE \"users\" set \"a\" = 1";                                                                                           // OKAY success
-  input[14] = "UPDATE \"users\" set \"a\" = 1, \"b\" = 'abc', \"c\" = 2.3";                                                               // OKAY success
-  input[15] = "UPDATE \"users\" set \"a\" = 1 WHERE ( \"a\" = 2 )";                                                                       // OKAY success
-  input[16] = "UPDATE \"users\" set \"a\" = 1, \"b\" = 'abc', \"c\" = 2.3 WHERE ( \"a\" = 2 )";                                           // OKAY success
-  input[17] = "UPDATE \"users\" set \"a\" = 1 WHERE ( ( (\"a\" <= 1) OR (\"b\" >= 2) ) AND ( (\"c\" != 3) OR (\"d\" = 4) ) )";            // OKAY success
+  input[0] = "UPDATE \"users\" set \"a\" = 1;";                                                                                           // OKAY success
+  input[14] = "UPDATE \"users\" set \"a\" = 1, \"b\" = 'abc', \"c\" = 2.3;";                                                               // OKAY success
+  input[15] = "UPDATE \"users\" set \"a\" = 1 WHERE ( \"a\" = 2 );";                                                                       // OKAY success
+  input[16] = "UPDATE \"users\" set \"a\" = 1, \"b\" = 'abc', \"c\" = 2.3 WHERE ( \"a\" = 2 );";                                           // OKAY success
+  input[17] = "UPDATE \"users\" set \"a\" = 1 WHERE ( ( (\"a\" <= 1) OR (\"b\" >= 2) ) AND ( (\"c\" != 3) OR (\"d\" = 4) ) );";            // OKAY success
 
   // input
-  input[18] = "INSERT INTO \"user\" ( 0 , 'abc' , 123.45 )";                                         // OKAY success
+  input[18] = "INSERT INTO \"user\" ( 0 , 'abc' , 123.45 );";                                         // OKAY success
   input[19] = "INSERT into";                                                          // OKAY failure
-  input[20] = "INSERT INTO \"user\" (0xff,'abc',123.45)";                                         // OKAY success
-  input[21] = "INSERT INTO \"user\" ()";                                                          // OKAY failure
+  input[20] = "INSERT INTO \"user\" (0xff,'abc',123.45);";                                         // OKAY success
+  input[21] = "INSERT INTO \"user\" ();";                                                          // OKAY failure
   /* input[22] = "INSERT INTO \"user\" (-19, 'abc', -1.23, 67, 123.45)";                              // OKAY success */
-  input[22] = "INSERT INTO \"user\" (456, -123.45, 'abc')";
+  input[22] = "INSERT INTO \"user\" (456, -123.45, 'abc');";
   // clang-format on
 
   for (int j = 0; j < 23; j++) {
@@ -1266,12 +1266,13 @@ int example_parser(void) {
     token** tokens = (token**)malloc(sizeof(token) * MAXTOKEN);
     assert(tokens != NULL);
     size_t nb_tokens = lexer(input[j], tokens);
-    for (int i = 0; i < MAXTOKEN; i++) {
+    for (size_t i = 0; i < nb_tokens; i++) {
       if (tokens[i] == NULL) {
         break;
       }
       print_token(tokens[i]);
     }
+    printf("\n");
     ast_node* root = parse_statement(tokens, &nb_tokens);
 
     print_ast(root);

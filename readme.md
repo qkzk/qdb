@@ -147,5 +147,18 @@ octdigit           ::=     '0' | octdigit-excl-zero.
 
 1. [lexer](./lexer.c)
 2. [parser](./parser.c)
-   - [x] `drop table "tablename"`
-   - [x] `insert into table "tablename" (123, 'ast', 123.456,-19, -89.012)`
+3. [executer](./executer.c)
+4. [repl](./repl.c)
+
+# Changelog
+
+1. compare tokens without case
+2. request should end with ;
+3. repl navigation up, down (in memory only)
+
+## BUGS & TODO
+
+2. .read requests from file
+3. .save & .open
+4. table name should be unique
+5. tokens keyword should be converted to uppercase
