@@ -198,7 +198,9 @@ ast_node* create_node_root(ast_kind kind, char* description) {
   assert(node != NULL);
   node->kind = kind;
   node->nb_tokens = 2;
-  char* value = (char*)malloc(sizeof(char) * strlen(description));
+  char* value = (char*)malloc(sizeof(char) * (strlen(description) + 1));
+  assert(value != NULL);
+
   strcpy(value, description);
   node->value = value;
   node->left = NULL;

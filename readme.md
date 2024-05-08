@@ -34,6 +34,20 @@ Remake a simple SQLite like database in C
 - [sqlite official documentation](https://www.sqlite.org/)
 - [cstack db tutorial](https://cstack.github.io/db_tutorial/parts/part1.html)
 
+## Compilation
+
+Usage compilation (use it at your own risks, you've been warned)
+
+```sh
+gcc -O2 repl.c executer.c parser.c lexer.c help.c -o ../bin/repl -lreadline; ../bin/repl
+```
+
+Development compilation (for debugging purpose) :
+
+```sh
+gcc -Wall -Wextra -Wpedantic -Wconversion -g repl.c executer.c parser.c lexer.c help.c -o ../bin/repl -lreadline; ../bin/repl
+```
+
 # Process
 
 ATM not everything is implemented.

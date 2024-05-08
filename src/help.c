@@ -1,6 +1,6 @@
 #include <stdio.h>
 
-const char* help(void) {
+void help(void) {
   printf(
       ""
       "\n"

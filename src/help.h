@@ -1,6 +1,6 @@
 #ifndef _HELP__
 #define _HELP__ 
 
-const char* help(void);
+void help(void);
 
 #endif // _HELP__ 
