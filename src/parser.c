@@ -198,7 +198,9 @@ ast_node* create_node_root(ast_kind kind, char* description) {
   assert(node != NULL);
   node->kind = kind;
   node->nb_tokens = 2;
-  char* value = (char*)malloc(sizeof(char) * strlen(description));
+  char* value = (char*)malloc(sizeof(char) * (strlen(description) + 1));
+  assert(value != NULL);
+
   strcpy(value, description);
   node->value = value;
   node->left = NULL;
@@ -1285,12 +1287,7 @@ int example_parser(void) {
     token** tokens = (token**)malloc(sizeof(token) * MAXTOKEN);
     assert(tokens != NULL);
     size_t nb_tokens = lexer(input[j], tokens);
-    for (size_t i = 0; i < nb_tokens; i++) {
-      if (tokens[i] == NULL) {
-        break;
-      }
-      print_token(tokens[i]);
-    }
+    print_tokens(tokens, nb_tokens);
     printf("\n");
     ast_node* root = parse_statement(tokens, &nb_tokens);
 

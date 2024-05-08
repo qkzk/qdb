@@ -30,5 +30,6 @@ size_t lexer(char* line, token** tokens) ;
 void print_token(token* tok);
 void destroy_tokens(token** tokens);
 int example_lexer(void);
+void print_tokens(token** tokens, size_t nb_tokens);
 
-#endif
+#endif // _LEXER__
