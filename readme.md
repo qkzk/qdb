@@ -158,8 +158,9 @@ octdigit           ::=     '0' | octdigit-excl-zero.
 
 ## BUGS & TODO
 
-3. load a database from CLI argument
-4. refactor select and store values somewhere _like_ a table
+1. load a database from CLI argument
+2. refactor select and store values somewhere _like_ a table
+3. leaks everywhere
 
 ## Ambitions
 
