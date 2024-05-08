@@ -275,6 +275,13 @@ void print_token(token* tok) {
          tok->len);
 }
 
+void print_tokens(token** tokens, size_t nb_tokens) {
+  for (size_t i = 0; i < nb_tokens; i++) {
+    printf(" %3ld  ", i);
+    print_token(*tokens);
+  }
+}
+
 token* get_next_token(char* line, size_t* position, size_t line_len) {
   size_t i = 0;
   char c;
@@ -436,21 +443,16 @@ int example_lexer(void) {
   line = "select";
   line = "select * from 'tablename'";
   line = "insert tablename x = 1, y = 2, z = 3";
-  line = "select \"a\", \"b\", \"c\" from \"tablename\" where \"a\"=2";
   line = "drop table 'user'";
   line = "WHERE ( \"a\" <= 2 )";
   line = "into";
+  line = "select \"a\", \"b\", \"c\" from \"tablename\" where (\"a\"=2);";
   /* line = "aze"; */
 
   token** tokens = (token**)malloc(sizeof(token) * MAXTOKEN);
   assert(tokens != NULL);
-  lexer(line, tokens);
-  for (int i = 0; i < MAXTOKEN; i++) {
-    if (tokens[i] == NULL) {
-      break;
-    }
-    print_token(tokens[i]);
-  }
+  size_t nb_tokens = lexer(line, tokens);
+  print_tokens(tokens, nb_tokens);
 
   destroy_tokens(tokens);
 

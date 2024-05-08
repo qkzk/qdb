@@ -125,11 +125,14 @@ octdigit           ::=     '0' | octdigit-excl-zero.
 16. select \* from table
 17. FIX. drop moves the tables in wrong order. Must run through the table in ascending order and move right to left.
 18. insert into table **values**
+19. .clear : drop all tables from memory
+20. .save & .open [binn](https://github.com/liteserver/binn?tab=readme-ov-file#usage-example)
+21. .help
+22. sort files into folders
+23. remove old unused files
 
 ## BUGS & TODO
 
-1. .save & .open [binn](https://github.com/liteserver/binn?tab=readme-ov-file#usage-example)
-2. .clear : drop all tables from memory
 3. load a database from CLI argument
 4. refactor select and store values somewhere _like_ a table
 

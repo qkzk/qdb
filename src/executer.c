@@ -4,7 +4,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
+#include "help.h"
 #include "lexer.h"
 #include "parser.h"
 
@@ -140,7 +144,9 @@ table_desc* example_create_table_desc(void) {
 }
 
 table_desc* create_table_desc_from_ast(ast_node* root) {
-  print_ast(root);
+  if (DEBUG) {
+    print_ast(root);
+  }
   if (root->kind != CREATE) {
     runtime_error("Expected a create node");
     return NULL;
@@ -217,7 +223,7 @@ typedef struct TableData {
   table_desc* schema;
   size_t nb_rows;
   size_t capacity;
-  size_t row_size;
+  size_t row_size;  // used bytes per row
   void* values;
 } table_data;
 
@@ -248,6 +254,20 @@ void print_table(table_data* data) {
   print_schema(data->schema);
 }
 
+void destroy_desc(attr_desc_size* desc) {
+  free(desc->name);
+  free(desc);
+}
+
+void destroy_table(table_data* table) {
+  for (size_t index_desc = 0; index_desc < table->schema->nb_attr;
+       index_desc++) {
+    destroy_desc(table->schema->descs[index_desc]);
+  }
+  free(table->schema->name);
+  free(table->schema);
+  free(table->values);
+}
 #define MAXTABLES 128
 
 table_data* find_table_from_name(table_data** tables,
@@ -699,7 +719,9 @@ bool keep_row(table_data* table,
 bool execute_select_from_table(table_data** tables,
                                size_t nb_tables,
                                ast_node* root) {
-  print_ast(root);
+  if (DEBUG) {
+    print_ast(root);
+  }
   if (root->kind != SELECT) {
     runtime_error("Expected a select node");
     return false;
@@ -1156,12 +1178,137 @@ bool execute_update_table(table_data** tables,
 
 static table_data** tables;
 static size_t nb_tables;
-bool execute_request(char* request);
+bool execute(char* request);
+
+void serialise_attr_desc_size(attr_desc_size* attr_desc, FILE* save_file) {
+  size_t name_len = strlen(attr_desc->name) + 1;
+  // 1. write the name len
+  fwrite(&name_len, sizeof(size_t), 1, save_file);
+  // 2. write the name itself
+  fwrite(attr_desc->name, name_len, 1, save_file);
+  // 3. write down attr_kind
+  fwrite(&attr_desc->desc, sizeof(attr_kind), 1, save_file);
+  // 4. write the size
+  fwrite(&attr_desc->size, sizeof(size_t), 1, save_file);
+}
+
+attr_desc_size* deserialise_attr_desc_size(FILE* save_file) {
+  attr_desc_size* attr_desc = (attr_desc_size*)malloc(sizeof(attr_desc_size));
+  assert(attr_desc != NULL);
+  size_t name_len;
+
+  assert(save_file != NULL);
+  // 1. write the name len
+  fread(&name_len, sizeof(size_t), 1, save_file);
+  // 2. read the name itself
+  attr_desc->name = (char*)malloc(sizeof(char) * name_len);
+  assert(attr_desc->name != NULL);
+
+  fread(attr_desc->name, name_len, 1, save_file);
+  // 3. read down attr_kind
+  fread(&attr_desc->desc, sizeof(attr_kind), 1, save_file);
+  // 4. read the size
+  fread(&attr_desc->size, sizeof(size_t), 1, save_file);
+
+  return attr_desc;
+}
+
+void print_desc(attr_desc_size* desc) {
+  printf("Attribute Description & Size\n");
+  printf("name: %s\n", desc->name);
+  printf("size: %ld\n", desc->size);
+  printf("kind: %s\n", repr_attr_kind[desc->desc]);
+}
+
+void serialise_table_desc(table_desc* t_desc, FILE* save_file) {
+  size_t name_len = strlen(t_desc->name) + 1;
+  // 1. write the name len
+  fwrite(&name_len, sizeof(size_t), 1, save_file);
+  // 2. write the name itself
+  fwrite(t_desc->name, name_len, 1, save_file);
+  // 3. write the number of attributes
+  fwrite(&t_desc->nb_attr, sizeof(size_t), 1, save_file);
+  // 4. write every attr_desc_size
+  for (size_t index_attr = 0; index_attr < t_desc->nb_attr; index_attr++) {
+    serialise_attr_desc_size(t_desc->descs[index_attr], save_file);
+  }
+}
+
+table_desc* deserialise_table_desc(FILE* save_file) {
+  table_desc* t_desc = (table_desc*)malloc(sizeof(table_desc));
+  assert(t_desc != NULL);
+
+  size_t name_len;
+  // 1. write the name len
+  fread(&name_len, sizeof(size_t), 1, save_file);
+  // 2. write the name itself
+  t_desc->name = (char*)malloc(sizeof(char) * name_len);
+  assert(t_desc->name != NULL);
+  fread(t_desc->name, name_len, 1, save_file);
+  // 3. write the number of attributes
+  fread(&t_desc->nb_attr, sizeof(size_t), 1, save_file);
+  // 4. write every attr_desc_size
+  // Allocate space for descriptions
+  t_desc->descs =
+      (attr_desc_size**)malloc(sizeof(attr_desc_size) * t_desc->nb_attr);
+  assert(t_desc->descs != NULL);
+
+  for (size_t index_attr = 0; index_attr < t_desc->nb_attr; index_attr++) {
+    t_desc->descs[index_attr] = deserialise_attr_desc_size(save_file);
+  }
+  return t_desc;
+}
+
+void serialise_table(table_data* table, FILE* save_file) {
+  // 1. schema
+  serialise_table_desc(table->schema, save_file);
+  // 2. nb_rows
+  fwrite(&table->nb_rows, sizeof(size_t), 1, save_file);
+  // 3. capacity
+  fwrite(&table->capacity, sizeof(size_t), 1, save_file);
+  // 4. row_size
+  fwrite(&table->row_size, sizeof(size_t), 1, save_file);
+  // 5. values
+  size_t total_size = table->row_size * table->nb_rows;
+  fwrite(table->values, total_size, 1, save_file);
+}
+
+table_data* deserialise_table(FILE* save_file) {
+  table_data* table = (table_data*)malloc(sizeof(table_data));
+  assert(table != NULL);
+
+  // 1. schema
+  table->schema = deserialise_table_desc(save_file);
+  // 2. nb_rows
+  fread(&table->nb_rows, sizeof(size_t), 1, save_file);
+  // 3. capacity
+  fread(&table->capacity, sizeof(size_t), 1, save_file);
+  // 4. row_size
+  fread(&table->row_size, sizeof(size_t), 1, save_file);
+  // 5. values
+  size_t total_size = table->row_size * table->nb_rows;
+  table->values = (void*)malloc(total_size);
+  assert(table->values != NULL);
+  fread(table->values, total_size, 1, save_file);
+
+  return table;
+}
+
+void serialise_database(FILE* save_file) {
+  fwrite(&nb_tables, sizeof(size_t), 1, save_file);
+  for (size_t index_table = 0; index_table < nb_tables; index_table++) {
+    serialise_table(tables[index_table], save_file);
+  }
+}
+
+void deserialise_database(FILE* save_file) {
+  fread(&nb_tables, sizeof(size_t), 1, save_file);
+  for (size_t index_table = 0; index_table < nb_tables; index_table++) {
+    tables[index_table] = deserialise_table(save_file);
+  }
+}
 
 bool command_save_tables(char* command) {
-  runtime_error(".save : not yet implemented");
-  return false;
-
   const char s[] = " ";
   char* filename;
   strtok(command, s);          // first string
@@ -1175,19 +1322,22 @@ bool command_save_tables(char* command) {
   FILE* save_file = fopen(filename, "wb");
   assert(save_file != NULL);
 
-  fwrite(&nb_tables, sizeof(size_t), 1, save_file);
-  for (size_t index_table = 0; index_table < nb_tables; index_table++) {
-    fwrite(&(tables[index_table]), sizeof(table_data), 1, save_file);
-  }
-
+  serialise_database(save_file);
   fclose(save_file);
+
+  struct stat sb;
+
+  if (stat(filename, &sb) == -1) {
+    runtime_error("stat failed to read %s", filename);
+    return false;
+  } else {
+    printf("Wrote %ld tables accounting for %lld bytes to %s\n", nb_tables,
+           (long long)sb.st_size, filename);
+  }
   return true;
 }
 
 bool command_open_tables(char* command) {
-  runtime_error(".open : not yet implemented");
-  return false;
-
   const char s[] = " ";
   char* filename;
   strtok(command, s);          // first string
@@ -1200,17 +1350,12 @@ bool command_open_tables(char* command) {
   FILE* save_file = fopen(filename, "rb");
   assert(save_file != NULL);
 
-  fread(&nb_tables, sizeof(size_t), 1, save_file);
-  printf("nb_tables = %ld\n", nb_tables);
-  size_t index_table = 0;
-  for (; index_table < nb_tables; index_table++) {
-    tables[index_table] = (table_data*)malloc(sizeof(table_data));
-    assert(tables[index_table] != NULL);
-    fread(&(tables[index_table]), sizeof(table_data), 1, save_file);
-  }
-  printf("read %ld tables\n", index_table);
-
+  deserialise_database(save_file);
   fclose(save_file);
+
+  printf("Read %s and found %ld tables:\n", filename, nb_tables);
+  execute(".tables");
+
   return true;
 }
 
@@ -1256,7 +1401,7 @@ bool command_read_request_file(char* command) {
         success = false;
         break;
       }
-      if (!execute_request(line)) {
+      if (!execute(line)) {
         runtime_error("Line ##%s## failed", line);
         success = false;
         break;
@@ -1268,6 +1413,23 @@ bool command_read_request_file(char* command) {
     free(line);
   }
   return success;
+}
+
+bool command_clear_all_tables(void) {
+  if (nb_tables == 0) {
+    printf("No table to clear.\n");
+    return true;
+  }
+  for (size_t index_table = 0; index_table < nb_tables; index_table++) {
+    destroy_table(tables[index_table]);
+  }
+  printf("Cleared %ld tables\n", nb_tables);
+  nb_tables = 0;
+  return true;
+}
+bool command_print_help(void) {
+  help();
+  return true;
 }
 
 bool execute_command(char* command) {
@@ -1284,6 +1446,10 @@ bool execute_command(char* command) {
     return command_open_tables(command);
   } else if (strncmp(command, ".read", strlen(".read")) == 0) {
     return command_read_request_file(command);
+  } else if (strncmp(command, ".clear", strlen(".clear")) == 0) {
+    return command_clear_all_tables();
+  } else if (strncmp(command, ".help", strlen(".help")) == 0) {
+    return command_print_help();
   } else {
     printf("Unknown command %s\n", command);
   }
@@ -1291,26 +1457,6 @@ bool execute_command(char* command) {
 }
 
 bool execute_request(char* request) {
-  if (tables == NULL) {
-    tables = (table_data**)malloc(sizeof(table_data) * MAXTABLES);
-  }
-  assert(tables != NULL);
-  if (strlen(request) == 0) {
-    return false;
-  }
-  if (request[0] == '.') {
-    // command, not a request
-    return execute_command(request);
-  }
-  if (request[0] == '#') {
-    // comment
-    return true;
-  }
-
-  if (DEBUG) {
-    printf("\n%s\n", request);
-  }
-
   token** tokens = (token**)malloc(sizeof(token) * MAXTOKEN);
   assert(tokens != NULL);
   size_t nb_tokens = lexer(request, tokens);
@@ -1319,16 +1465,10 @@ bool execute_request(char* request) {
     return false;
   }
 
-  /* if (DEBUG) { */
-  printf("\ntokens\n");
-  for (int i = 0; i < MAXTOKEN; i++) {
-    if (tokens[i] == NULL) {
-      break;
-    }
-    print_token(tokens[i]);
+  if (DEBUG) {
+    printf("\ntokens\n");
+    print_tokens(tokens, nb_tokens);
   }
-  printf("\n");
-  /* } */
 
   ast_node* root = parse_statement(tokens, &nb_tokens);
   if (root == NULL) {
@@ -1394,6 +1534,30 @@ bool execute_request(char* request) {
   return true;
 }
 
+bool execute(char* request) {
+  if (tables == NULL) {
+    tables = (table_data**)malloc(sizeof(table_data) * MAXTABLES);
+  }
+  assert(tables != NULL);
+  if (strlen(request) == 0) {
+    return false;
+  }
+  if (request[0] == '.') {
+    // command, not a request
+    return execute_command(request);
+  }
+  if (request[0] == '#') {
+    // comment
+    return true;
+  }
+
+  if (DEBUG) {
+    printf("\n%s\n", request);
+  }
+
+  return execute_request(request);
+}
+
 int example_executer(void) {
   if (DEBUG) {
     table_desc* td = example_create_table_desc();
@@ -1426,36 +1590,105 @@ int example_executer(void) {
   char* request_update_2 = "update  \"user\" SET \"a\" = 999  WHERE (\"a\" = 789);";
   // clang-format on
 
-  assert(execute_request(request_create_1));
-  assert(execute_request(request_create_2));
-  assert(execute_request(request_select_1));
-  assert(execute_request(request_create_3));
-  assert(execute_request(request_select_4));
-  assert(execute_request(request_select_5));
-  /* return 0; */
+  assert(execute(request_create_1));
+  assert(execute(request_create_2));
+  assert(execute(request_select_1));
+  assert(execute(request_create_3));
+  assert(execute(request_select_4));
+  assert(execute(request_select_5));
+  assert(execute(request_insert_1));
+  assert(execute(request_insert_2));
+  assert(!execute(request_insert_3));  // duplicate primary key
+  assert(execute(request_insert_4));
+  assert(execute(request_drop));
+  assert(!execute(request_drop));  // already dropped
+  assert(execute(request_select_1));
+  assert(execute(request_delete_1));
+  assert(execute(request_select_1));
+  assert(execute(request_delete_2));
+  assert(execute(request_select_2));
+  assert(execute(request_insert_1));
+  assert(execute(request_insert_2));
+  assert(execute(request_insert_4));
+  assert(execute(request_select_3));
+  assert(execute(request_update_1));
+  assert(execute(request_select_3));
+  assert(!execute(request_update_2));  // duplicate primary key
+  assert(execute(request_select_3));
+  execute(".tables");
 
-  assert(execute_request(request_insert_1));
-  assert(execute_request(request_insert_2));
-  assert(!execute_request(request_insert_3));  // duplicate primary key
-  assert(execute_request(request_insert_4));
-  assert(execute_request(request_drop));
-  assert(!execute_request(request_drop));  // already dropped
-  /* assert(execute_request(request_select_1)); */
-  execute_request(request_select_1);
-  execute_request(".tables");
-  return 1;
-  assert(execute_request(request_delete_1));
-  assert(execute_request(request_select_1));
-  assert(execute_request(request_delete_2));
-  assert(execute_request(request_select_2));
-  assert(execute_request(request_insert_1));
-  assert(execute_request(request_insert_2));
-  assert(execute_request(request_insert_4));
-  assert(execute_request(request_select_3));
-  assert(execute_request(request_update_1));
-  assert(execute_request(request_select_3));
-  assert(!execute_request(request_update_2));  // duplicate primary key
-  assert(execute_request(request_select_3));
+  /* // serialisation */
+  printf("\n\nSERIALISATION / DESERIALISATION\n\n");
+  /* attr_desc_size* desc_source =
+   * (attr_desc_size*)malloc(sizeof(attr_desc_size)); */
+  /* assert(desc_source != NULL); */
+  /* desc_source->name = "1234567890";  // 10 chars */
+  /* desc_source->desc = D_INT; */
+  /* desc_source->size = sizeof(long); */
+  /* print_desc(desc_source); */
+  /*  */
+  /* attr_desc_size* desc_source2 = */
+  /*     (attr_desc_size*)malloc(sizeof(attr_desc_size)); */
+  /* assert(desc_source2 != NULL); */
+  /* desc_source2->name = "azertyuiop";  // 10 chars */
+  /* desc_source2->desc = D_INT; */
+  /* desc_source2->size = sizeof(long); */
+  /* print_desc(desc_source2); */
+  /*  */
+  /* char* filename_attr_desc = "attr_desc_size.b"; */
+  /* FILE* save_file = fopen(filename_attr_desc, "wb"); */
+  /* assert(save_file != NULL); */
+  /* serialise_attr_desc_size(desc_source, save_file); */
+  /* serialise_attr_desc_size(desc_source2, save_file); */
+  /* fclose(save_file); */
+  /*  */
+  /* save_file = fopen(filename_attr_desc, "rb"); */
+  /* attr_desc_size* desc_read = deserialise_attr_desc_size(save_file); */
+  /* attr_desc_size* desc_read2 = deserialise_attr_desc_size(save_file); */
+  /* print_desc(desc_read); */
+  /* print_desc(desc_read2); */
+  /* fclose(save_file); */
+  /* printf("serialisation deserialisation of table desc okay\n\n"); */
 
+  /* print_schema(tables[0]->schema); */
+  /*  */
+  /* char* filename_table_desc = "table_desc.b"; */
+  /*  */
+  /* FILE* save_file_table_desc = fopen(filename_table_desc, "wb"); */
+  /* assert(save_file_table_desc != NULL); */
+  /* serialise_table_desc(tables[0]->schema, save_file_table_desc); */
+  /* fclose(save_file_table_desc); */
+  /*  */
+  /* save_file_table_desc = fopen(filename_table_desc, "rb"); */
+  /* assert(save_file_table_desc != NULL); */
+  /* table_desc* t_desc = deserialise_table_desc(save_file_table_desc); */
+  /* fclose(save_file_table_desc); */
+  /* print_schema(t_desc); */
+  /* printf("table_desc serde okay\n"); */
+
+  printf("\nbefore saving\n");
+  execute("SELECT * FROM \"user\";");
+  char* filename_savetable = "table.b";
+  FILE* save_table = fopen(filename_savetable, "wb");
+  assert(save_table != NULL);
+  serialise_table(tables[0], save_table);
+  fclose(save_table);
+  printf("\nafter saving\n");
+  execute_command(".tables");
+
+  printf("table[0] should be empty...\n");
+  execute("DELETE FROM \"user\";");
+  execute("SELECT *  FROM \"user\";");
+
+  save_table = fopen(filename_savetable, "rb");
+  assert(save_table != NULL);
+  tables[0] = NULL;
+  tables[0] = deserialise_table(save_table);
+  fclose(save_table);
+  printf("serialisation deserialisation of table okay\n\n");
+
+  print_table(tables[0]);
+  /* execute_command(".tables"); */
+  execute("SELECT * FROM \"user\";");
   return 0;
 }

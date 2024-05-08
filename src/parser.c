@@ -1285,12 +1285,7 @@ int example_parser(void) {
     token** tokens = (token**)malloc(sizeof(token) * MAXTOKEN);
     assert(tokens != NULL);
     size_t nb_tokens = lexer(input[j], tokens);
-    for (size_t i = 0; i < nb_tokens; i++) {
-      if (tokens[i] == NULL) {
-        break;
-      }
-      print_token(tokens[i]);
-    }
+    print_tokens(tokens, nb_tokens);
     printf("\n");
     ast_node* root = parse_statement(tokens, &nb_tokens);
 

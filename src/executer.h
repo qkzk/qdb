@@ -24,7 +24,7 @@ typedef struct TableData {
   size_t row_size;
   void* values;
 } table_data;
-bool execute_request(char* request);
+bool execute(char* request);
 void print_table(table_data* data);
 int example_executer(void);
 

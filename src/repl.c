@@ -31,7 +31,7 @@ int main(void) {
     if (input == NULL) {
       break;
     }
-    execute_request(input);
+    execute(input);
     free(input);
   }
   puts("bye!\n");
