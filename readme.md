@@ -129,6 +129,9 @@ octdigit           ::=     '0' | octdigit-excl-zero.
 ## BUGS & TODO
 
 1. .save & .open [binn](https://github.com/liteserver/binn?tab=readme-ov-file#usage-example)
+2. .clear : drop all tables from memory
+3. load a database from CLI argument
+4. refactor select and store values somewhere _like_ a table
 
 ## Ambitions
 
@@ -144,9 +147,9 @@ octdigit           ::=     '0' | octdigit-excl-zero.
 4. null values when inserting
    change the parser, create a null value which isn't 0 (???)
    - float ? 0 ???
-   - int ? store x+1, retrieve x-1, compare x+1, then 0 is NULL
+   - int ? store x+1, retrieve x-1, compare x-1, then 0 is NULL
 5. autoincrement pk
-   requires another table just for that and check after every insertion
+   easy. requires another table just for that and check after every insertion change schema
 6. binary data
    another type, must read from something and specify maxsize
 7. something from **select**
