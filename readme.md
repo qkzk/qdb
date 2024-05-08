@@ -36,13 +36,17 @@ Remake a simple SQLite like database in C
 
 ## Compilation
 
-Usage compilation (use it at your own risks, you've been warned)
+The only supported platform is linux. I can't and won't test it on other platform.
+
+The only dependency is [readline](https://tiswww.cwru.edu/php/chet/readline/rltop.html) for the repl since I couldn't be bothered with escape characters in the terminal.
+
+Usage compilation (**use it at your own risks, you've been warned**):
 
 ```sh
 gcc -O2 repl.c executer.c parser.c lexer.c help.c -o ../bin/repl -lreadline; ../bin/repl
 ```
 
-Development compilation (for debugging purpose) :
+Development compilation, for debugging purpose:
 
 ```sh
 gcc -Wall -Wextra -Wpedantic -Wconversion -g repl.c executer.c parser.c lexer.c help.c -o ../bin/repl -lreadline; ../bin/repl
@@ -53,8 +57,8 @@ gcc -Wall -Wextra -Wpedantic -Wconversion -g repl.c executer.c parser.c lexer.c 
 ATM not everything is implemented.
 
 1. Start it with `$ .qdb`
-   NYI use `$ . repl`
-2. `qdb> ` type a command (`.something`) or a request.
+   NYI use `$ ./bin/repl`
+2. `qdb> ` type a command (`.something`) or a request (`CREATE TABLe "user" ("a" int pk, "b");`).
 3. Request / Command is [read](./repl.c), [tokenzide](./lexer.c), [parsed](./parser.c) and [executed](./executer.c)
 
    - If the request success, nothing happens except the output of `SELECT...` requests.
@@ -69,10 +73,13 @@ ATM not everything is implemented.
 
 Commands aren't sql requests but act on the whole database.
 
-- `.tables` display all tables in memory
+- `.help` display a verbose help message.
+- `.exit` leaves the application.
+- `.tables` display all tables in memory.
 - `.read req.sql` read and execute every line from `req.sql`. It stops at first failure. `.read` can't call itself recursivelly.
-- NYI `.open database.qdb` loads a database from `database.qdb` file in memory, without wiping the current tables. It may overwrite what is currently in memory.
-- NYI `.save database.qdb` saves in memory tables into `database.qdb` file.
+- `.open database.qdb` loads a database from `database.qdb` file in memory, without wiping the current tables. It may overwrite what is currently in memory.
+- `.save database.qdb` saves in memory tables into `database.qdb` file.
+- `.clear` erase all your tables from memory.
 
 ## Requests Syntax
 
@@ -175,3 +182,4 @@ octdigit           ::=     '0' | octdigit-excl-zero.
 ### Backend
 
 1. Store the data in B-trees
+   lol
