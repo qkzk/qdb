@@ -42,11 +42,15 @@ The only dependency is [readline](https://tiswww.cwru.edu/php/chet/readline/rlto
 
 Usage compilation (**use it at your own risks, you've been warned**):
 
+From `./src`
+
 ```sh
 gcc -O2 repl.c executer.c parser.c lexer.c help.c -o ../bin/repl -lreadline; ../bin/repl
 ```
 
 Development compilation, for debugging purpose:
+
+From `./src`
 
 ```sh
 gcc -Wall -Wextra -Wpedantic -Wconversion -g repl.c executer.c parser.c lexer.c help.c -o ../bin/repl -lreadline; ../bin/repl
