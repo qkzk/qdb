@@ -20,7 +20,7 @@ gcc -Wall -Wextra -Wpedantic -Wconversion -g repl.c executer.c parser.c lexer.c
 #define MAXLINE 1024
 #define DEBUG false
 
-int main(int argc, char** argv) {
+int main(void) {
   puts("\nWelcome to qdb.\n");
   while (true) {
     char* input = readline("qdb> ");

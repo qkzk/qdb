@@ -51,7 +51,7 @@ char* repr_kind(token_kind kind) {
   }
 }
 
-#define NBKEYWORDS 34
+#define NBKEYWORDS 36
 // clang-format off
 const char *skeywords[NBKEYWORDS] = {
   "and",      "AND",
@@ -69,6 +69,7 @@ const char *skeywords[NBKEYWORDS] = {
   "set",      "SET",
   "table",    "TABLE",
   "update",   "UPDATE",
+  "values",   "VALUES",
   "varchar",  "VARCHAR",
   "where",    "WHERE",
 };
@@ -259,7 +260,7 @@ token* new_token(char* value, size_t len, token_kind kind) {
   t->kind = kind;
   if (t->kind == KEYWORD) {
     for (size_t i = 0; i < t->len; i++) {
-      t->value[i] = toupper(t->value[i]);
+      t->value[i] = (char)toupper(t->value[i]);
     }
   }
   return t;

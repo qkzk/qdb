@@ -1406,10 +1406,10 @@ int example_executer(void) {
   char* request_create_2 = "CREATE TABLE \"user\" (\"a\" int pk, \"b\" int, \"c\" varchar ( 32 ) );";
   char* request_create_3 = "CREATE TABLE \"aze\" (\"a\" int pk );";
 
-  char* request_insert_1 = "INSERT INTO \"user\" (123, 456, 'abc');";
-  char* request_insert_2 = "INSERT INTO \"user\" (789, 123, 'defgh');";
-  char* request_insert_3 = "INSERT INTO \"user\" (789, 333, 'xyz');";
-  char* request_insert_4 = "INSERT INTO \"user\" (102, 123, 'tuv');";
+  char* request_insert_1 = "INSERT INTO \"user\" VALUES (123, 456, 'abc');";
+  char* request_insert_2 = "INSERT INTO \"user\" VALUES (789, 123, 'defgh');";
+  char* request_insert_3 = "INSERT INTO \"user\" VALUES (789, 333, 'xyz');";
+  char* request_insert_4 = "INSERT INTO \"user\" VALUES (102, 123, 'tuv');";
   /* char* request_select = "SELECT \"b\", \"c\", \"a\"  FROM \"user\" WHERE ( \"c\" = 'abc' );"; */
   char* request_drop     = "DROP TABLE \"to_drop\";";
   

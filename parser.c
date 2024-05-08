@@ -411,6 +411,13 @@ ast_node* parse_insert(token** tokens, size_t* nb_tokens) {
       parser_error("Expected tablename after INSERT INTO got %s",
                    (*tokens)->value);
     }
+    if (!is_keyword_this(*tokens, "VALUES")) {
+      parser_error("Expected a VALUES keyword after tablename got %s",
+                   (*tokens)->value);
+      return NULL;
+    }
+    tokens += 1;
+    *nb_tokens -= 1;
     if (expect(LEFT_PAREN, *tokens)) {
       tokens += 1;
       *nb_tokens -= 1;
@@ -1265,12 +1272,12 @@ int example_parser(void) {
   input[17] = "UPDATE \"users\" set \"a\" = 1 WHERE ( ( (\"a\" <= 1) OR (\"b\" >= 2) ) AND ( (\"c\" != 3) OR (\"d\" = 4) ) );";            // OKAY success
 
   // input
-  input[18] = "INSERT INTO \"user\" ( 0 , 'abc' , 123.45 );";                                         // OKAY success
+  input[18] = "INSERT INTO \"user\" VALUES ( 0 , 'abc' , 123.45 );";                                         // OKAY success
   input[19] = "INSERT into";                                                          // OKAY failure
-  input[20] = "INSERT INTO \"user\" (0xff,'abc',123.45);";                                         // OKAY success
-  input[21] = "INSERT INTO \"user\" ();";                                                          // OKAY failure
+  input[20] = "INSERT INTO \"user\" VALUES (0xff,'abc',123.45);";                                         // OKAY success
+  input[21] = "INSERT INTO \"user\" VALUES ();";                                                          // OKAY failure
   /* input[22] = "INSERT INTO \"user\" (-19, 'abc', -1.23, 67, 123.45)";                              // OKAY success */
-  input[22] = "INSERT INTO \"user\" (456, -123.45, 'abc');";
+  input[22] = "INSERT INTO \"user\" VALUES (456, -123.45, 'abc');";
   // clang-format on
 
   for (int j = 0; j < 23; j++) {

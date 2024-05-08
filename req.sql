@@ -4,8 +4,8 @@ CREATE TABLE "t3" ("e" int pk, "f" int);
 
 .tables
 
-INSERT INTO "t2" (1, 2);
-INSERT INTO "t3" (3, 4);
+INSERT INTO "t2" VALUES (1, 2);
+INSERT INTO "t3" VALUES (3, 4);
 
 DROP TABLE "t1";
 

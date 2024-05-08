@@ -69,7 +69,7 @@ statement          ::=     select-clause | insert-clause | update-clause | delet
 
 
 select-clause      ::=     'SELECT', projection, 'FROM', tablename ( 'WHERE' condition );.
-insert-clause      ::=     'INSERT', 'INTO', tablename, '(', literal (',' literal)*, ')';.
+insert-clause      ::=     'INSERT', 'INTO', tablename, 'VALUES', '(', literal (',' literal)*, ')';.
 update-clause      ::=     'UPDATE', tablename, 'SET', colname, '=', literal (',' colname = literal)* ( 'WHERE', condition );.
 delete-clause      ::=     'DELETE', 'FROM', tablename, ( 'WHERE', condition );.
 create-clause      ::=     'CREATE', 'TABLE', tablename, '(', pk-description, (',' normal-col-desc )* ')';.
@@ -124,11 +124,11 @@ octdigit           ::=     '0' | octdigit-excl-zero.
 15. FIX: some tables can't be found in repl... (wrong copying of node value...)
 16. select \* from table
 17. FIX. drop moves the tables in wrong order. Must run through the table in ascending order and move right to left.
+18. insert into table **values**
 
 ## BUGS & TODO
 
 1. .save & .open [binn](https://github.com/liteserver/binn?tab=readme-ov-file#usage-example)
-2. insert into table **values**
 
 ## Ambitions
 
