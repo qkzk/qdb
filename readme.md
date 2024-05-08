@@ -1,63 +1,8 @@
 # QDB
 
-Attempt to remake a simple SQL like database in C
+Remake a simple SQLite like database in C
 
-## Syntax
-
-- keywords can be capitalized or not
-- one statement at a time no need for semicolon ;
-
-select suivi d'identifieurs de champs séparés par des virgules suivi de from suivi d'un identifieur de table
-suivi de where suivi d'un identifieur d'une condition
-
-```sql
-select "a", "b", "c" from "tablename" where "a" = 1
-```
-
-```sql
-select * from "tablename"
-```
-
-insert suivi de into suivi d'un identifieur de table suivi de ( suivi de toutes les valeurs dans l'ordre suivi de )
-
-```sql
-insert into "tablename" (1, 2, 3)
-```
-
-update suivi d'un identifieur de table suivi de set suivi de
-
-```sql
-update "tablename" set "a" = 1, "c" = 3
-```
-
-```sql
-delete from "tablename" where "a" = 1
-```
-
-```sql
-create table "tablename" ("id" int pk, "b" varchar(32), "c" float)
-```
-
-```sql
-drop table "tablename"
-```
-
-litteraux
-
-| truc      | type              | C rep              |
-| --------- | ----------------- | ------------------ |
-| `32`      | NUMBER            | long               |
-| `32.3`    | NUMBER            | double             |
-| `0x33`    | NUMBER            | long               |
-| `bonjour` | str[unsigned int] | char[unsigned int] |
-
-conditions
-
-```sql
-"identifieur de champ" rel val
-```
-
-## Steps
+## Ideas from sqlite
 
 ### Core
 
@@ -89,20 +34,35 @@ conditions
 - [sqlite official documentation](https://www.sqlite.org/)
 - [cstack db tutorial](https://cstack.github.io/db_tutorial/parts/part1.html)
 
-## Lexer
+# Process
 
-1. keyword (select, insert into, update, create, drop)
+ATM not everything is implemented.
 
-1. select a, b, c from tablename where condition
-1. update tablename set a=x where condition
-1. insert (a, b, c, d) into tablename
-1. create table tablename (
-   attrname type PK,
-   attrname type,
-   ...
-   )
+1. Start it with `$ .qdb`
+   NYI use `$ . repl`
+2. `qdb> ` type a command (`.something`) or a request.
+3. Request / Command is [read](./repl.c), [tokenzide](./lexer.c), [parsed](./parser.c) and [executed](./executer.c)
 
-# Syntax
+   - If the request success, nothing happens except the output of `SELECT...` requests.
+   - If the request fails, some error messages are displayed:
+     - `Syntax error` from the lexer,
+     - `Parser error` from the parser,
+     - `Runtime error` from the executer.
+
+   Those errors bubble and only the first message can tell you exactly what happened.
+
+## Commands
+
+Commands aren't sql requests but act on the whole database.
+
+- `.tables` display all tables in memory
+- `.read req.sql` read and execute every line from `req.sql`. It stops at first failure. `.read` can't call itself recursivelly.
+- NYI `.open database.qdb` loads a database from `database.qdb` file in memory, without wiping the current tables. It may overwrite what is currently in memory.
+- NYI `.save database.qdb` saves in memory tables into `database.qdb` file.
+
+## Requests Syntax
+
+This is a simplified version of SQL. Since it's a hobby project I won't do much more.
 
 ```ebnf
 statement          ::=     select-clause | insert-clause | update-clause | delete-clause | create-clause | drop-clause.
@@ -145,27 +105,53 @@ octdigit           ::=     '0' | octdigit-excl-zero.
 
 # DONE
 
+## Changelog
+
 1. [lexer](./lexer.c)
 2. [parser](./parser.c)
 3. [executer](./executer.c)
 4. [repl](./repl.c)
-
-# Changelog
-
-1. compare tokens without case
-2. request should end with ;
-3. repl navigation up, down (in memory only)
-4. FIX: table name should be unique
-5. .read requests from file
-6. FIX: tokens keyword should be converted to uppercase
-7. FIX: wrong colname for primary key when lenght 1
-8. FIX: selecting a wrong table segfault
-9. comments: every thing after # is ignored
-10. FIX: create table with only 1 col segfautls
-11. FIX: some tables can't be found in repl... (wrong copying of node value...)
-12. select \* from table
-13. BUG. drop moves the tables in wrong order. Must run through the table in ascending order and move right to left.
+5. compare tokens without case
+6. request should end with ;
+7. repl navigation up, down (in memory only)
+8. FIX: table name should be unique
+9. .read requests from file
+10. FIX: tokens keyword should be converted to uppercase
+11. FIX: wrong colname for primary key when lenght 1
+12. FIX: selecting a wrong table segfault
+13. comments: everything after # is ignored
+14. FIX: create table with only 1 col segfautls
+15. FIX: some tables can't be found in repl... (wrong copying of node value...)
+16. select \* from table
+17. FIX. drop moves the tables in wrong order. Must run through the table in ascending order and move right to left.
 
 ## BUGS & TODO
 
 1. .save & .open [binn](https://github.com/liteserver/binn?tab=readme-ov-file#usage-example)
+2. insert into table **values**
+
+## Ambitions
+
+### Requests & syntax
+
+1. join & foreign key
+   many more tokens & parser & table edition... then how to join them properly that ? check while creating, check for every insertion...
+2. Agregate functions (sum, avg, max etc.)
+   difficult (lexer more keyword, parser those expression, call aggregate on result... so store them)
+3. Order by, Distinct, Limit
+   - limit easy
+   - distinct & order by requires storing, distinct is easier
+4. null values when inserting
+   change the parser, create a null value which isn't 0 (???)
+   - float ? 0 ???
+   - int ? store x+1, retrieve x-1, compare x+1, then 0 is NULL
+5. autoincrement pk
+   requires another table just for that and check after every insertion
+6. binary data
+   another type, must read from something and specify maxsize
+7. something from **select**
+   need to create table from select and simply display them... not that hard
+
+### Backend
+
+1. Store the data in B-trees
